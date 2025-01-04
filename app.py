@@ -12,6 +12,7 @@ load_dotenv()
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.environ['OPENAI_API_KEY'] = os.getenv("OPENAI_API_KEY")
 
 def allowed_file(filename):
     """Helper function to check if the file extension is allowed"""
