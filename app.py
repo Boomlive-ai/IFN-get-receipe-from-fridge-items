@@ -4,12 +4,15 @@ import asyncio
 from dotenv import load_dotenv
 from tools.detect_items import detect_items
 from tools.tools import fetch_youtube_link, find_recipe_by_ingredients, fetch_recipe_data
+from flask_cors import CORS  # Import CORS
 
 # Load environment variables
 load_dotenv()
 
 # Initialize Flask app
 app = Flask(__name__)
+CORS(app)  # Allow all origins
+
 app.config['UPLOAD_FOLDER'] = 'uploads'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.environ['OPENAI_API_KEY'] = os.getenv("OPENAI_API_KEY")
