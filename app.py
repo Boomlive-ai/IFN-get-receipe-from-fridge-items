@@ -3,7 +3,7 @@ import os
 import asyncio
 from dotenv import load_dotenv
 from tools.detect_items import detect_items
-from tools.tools import fetch_youtube_link, find_recipe_by_ingredients, fetch_recipe_data
+from tools.tools import fetch_youtube_link, find_recipe_by_ingredients, fetch_recipe_data, store_all_recipe_data_in_pinecone
 from flask_cors import CORS  # Import CORS
 
 # Load environment variables
@@ -222,6 +222,15 @@ async def get_recipe():
     else:
         return jsonify({"error": "No matching recipe found"}), 404
 
+
+@app.route('/store_receipe_info', methods=['GET'])
+async def store_recipes():
+    stored_recipes = store_all_recipe_data_in_pinecone()
+
+    if stored_recipes:
+        return jsonify(stored_recipes), 200
+    else:
+        return jsonify({"error": "No matching recipe found"}), 404
 if __name__ == '__main__':
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=5000)

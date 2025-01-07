@@ -8,7 +8,7 @@ llm  = genai.GenerativeModel('gemini-1.5-pro-latest')
 
 def generate_food_or_ingredients_in_image(img):
     response = llm.generate_content([
-        "Analyze image and provide list of what are ingredients detected which we can use to cook in JSON format", 
+        "Analyze image and provide list of what are main ingredients(Eg:- Colliflower) detected which we can use to cook in JSON format", 
         img
     ])
 

@@ -92,43 +92,61 @@ def fetch_youtube_link(url):
     except Exception as e:
         print(f"An error occurred: {e}")
         return None
+import re
+
+def sanitize_id(input_string):
+    """
+    Sanitizes the given string to make it a valid ASCII ID for Pinecone.
+
+    Args:
+        input_string (str): The string to sanitize.
+
+    Returns:
+        str: A sanitized ASCII string.
+    """
+    # Replace non-ASCII characters with a placeholder (e.g., '?')
+    sanitized = input_string.encode('ascii', 'ignore').decode('ascii')
     
+    # Remove any special characters except for alphanumerics, dashes, and underscores
+    sanitized = re.sub(r'[^a-zA-Z0-9_-]', '_', sanitized)
+    
+    # Truncate if necessary to fit Pinecone ID length limits (if any)
+    return sanitized
+
 def extract_recipe_data(api_response):
     """
     Extracts required recipe information from the API response and stores it in Pinecone.
     """
     recipes = api_response.get("news", [])
     extracted_data = []
-    
+    print("These are the recipes fetched", len(recipes))
+
     for recipe in recipes:
         recipe_url = f"https://www.indiafoodnetwork.in{recipe.get('url', '')}"
-        youtube_link = fetch_youtube_link(recipe_url)
-        
-        # Convert ingredients into a list of strings
+        youtube_link = fetch_youtube_link(recipe_url) or ""
         ingredients = [ingredient.get("heading", "") for ingredient in recipe.get("ingredient", [])]
-        
-        # Convert steps into a single string (or a list of strings)
-        steps = [step.get("description", "") for step in sorted(
-            recipe.get("cookingstep", []), key=lambda x: x.get("uid", 0))]
+        steps = [step.get("description", "") for step in sorted(recipe.get("cookingstep", []), key=lambda x: x.get("uid", 0))]
+        story = recipe.get("story", "") or ""
+        thumbnail_image = recipe.get("thumbImage", "") or ""
+        dish_name = recipe.get("heading", "") or "Unnamed Dish"
 
-        story = recipe.get("story", "")
-        thumbnail_image = recipe.get("thumbImage", "")
-        dish_name = recipe.get("heading", "")
-
-        # Generate OpenAI embedding for ingredients
+        sanitized_id = sanitize_id(dish_name)
         ingredient_text = " ".join(ingredients)
         ingredient_embedding = embeddings.embed_query(ingredient_text)
 
-        # Store in Pinecone with correct metadata format
-        index.upsert([(dish_name, ingredient_embedding, {
-            "recipe_url": recipe_url,
-            "dish_name": dish_name,
-            "recipe_youtube_link": youtube_link,
-            "ingredients": ingredients,  # List of strings
-            "cooking_steps": steps,  # List of strings
-            "story": story,
-            "dish_image": thumbnail_image
-        })])
+        try:
+            index.upsert([(sanitized_id, ingredient_embedding, {
+                "recipe_url": recipe_url,
+                "dish_name": dish_name,
+                "recipe_youtube_link": youtube_link,
+                "ingredients": ingredients,
+                "cooking_steps": steps,
+                "story": story,
+                "dish_image": thumbnail_image
+            })])
+        except Exception as e:
+            print(f"Error upserting recipe '{dish_name}': {e}")
+            continue
 
         extracted_data.append({
             "Dish Name": dish_name,
@@ -138,8 +156,10 @@ def extract_recipe_data(api_response):
             "Story": story,
             "Thumbnail Image": thumbnail_image
         })
-    
+
     return extracted_data
+
+
 
 def fetch_recipe_data():
     """
@@ -178,3 +198,39 @@ def find_recipe_by_ingredients(user_ingredients):
         return matched_recipes
     else:
         return None
+    
+
+def store_all_recipe_data_in_pinecone():
+    all_receipes_info = []
+    start_index = 0
+    count = 20
+
+    while True:
+        
+        print("Current start index:", start_index)
+
+        # Construct API URL with the custom range
+        api_url = f'https://indiafoodnetwork.in/dev/h-api/content?startIndex={start_index}&count={count}'
+        headers = {
+            "accept": "*/*",
+            "s-id": "zAJPIArp1GpBnYPBoTgkruBzSRfbriwHr3uKdl4sSZwufsbhpg89F1wDqvpD6NoD"
+        }
+        print(f"Requesting API URL: {api_url}")
+
+        # Make the API request
+        response = requests.get(api_url, headers=headers)
+        
+        # Check if the request was successful
+        if response.status_code == 200:
+            data = response.json()
+            current_page_receipes_info = extract_recipe_data(data)
+            if(len(current_page_receipes_info)==0):
+                break
+            # Break the loop if no articles are returned
+            all_receipes_info.append(current_page_receipes_info)
+            start_index += count
+        else:
+            print(f"Failed to fetch articles. Status code: {response.status_code}")
+            break
+
+    return all_receipes_info
