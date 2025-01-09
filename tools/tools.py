@@ -176,29 +176,90 @@ def fetch_recipe_data():
     else:
         print("Failed to fetch API response.")
         return None
-def find_recipe_by_ingredients(user_ingredients):
+    
+
+import asyncio
+async def find_recipe_by_ingredients(user_ingredients):
     """
-    Finds the best matching recipes based on provided ingredients using Pinecone.
+    Finds the best matching recipes based on provided ingredients using Pinecone asynchronously.
     """
+    # Print the ingredients
     user_ingredients_text = " ".join(user_ingredients)
-    user_vector = np.random.rand(1536).tolist()  # Simulating proper embedding
-    
-    # Query Pinecone for all matches
-    result = index.query(vector=user_vector, top_k=3, include_metadata=True)
-    
-    if result and result['matches']:
-        matched_recipes = [{
-            "Dish Name": match["metadata"]["dish_name"],
-            "YouTube Link": match["metadata"]["recipe_youtube_link"],
-            "Ingredients": match["metadata"]["ingredients"],
-            "Steps to Cook": match["metadata"]["cooking_steps"],
-            "Story": match["metadata"]["story"],
-            "Thumbnail Image": match["metadata"]["dish_image"]
-        } for match in result['matches']]
-        return matched_recipes
-    else:
+    # print("Ingredients Text:", user_ingredients_text)
+
+    # Generate embedding for the user-provided ingredients asynchronously
+    try:
+        user_vector = await asyncio.to_thread(embeddings.embed_query, user_ingredients_text)
+    except Exception as e:
+        print(f"Error generating embedding: {e}")
         return None
+
+    # Query Pinecone for matches asynchronously (using keyword arguments)
+    try:
+        result = await asyncio.to_thread(index.query, vector=user_vector, top_k=3, include_metadata=True)
+        # print("Query Result:", result)
+
+        if result and result.get('matches'):
+            matched_recipes = [
+                {
+                    "Dish Name": match["metadata"]["dish_name"],
+                    "YouTube Link": match["metadata"]["recipe_youtube_link"],
+                    "Ingredients": match["metadata"]["ingredients"],
+                    "Steps to Cook": match["metadata"]["cooking_steps"],
+                    "Story": match["metadata"]["story"],
+                    "Thumbnail Image": match["metadata"]["dish_image"],
+                    "Recipe URL": match["metadata"]["recipe_url"]
+                }
+                for match in result['matches']
+            ]
+            return matched_recipes
+        else:
+            return None
+    except Exception as e:
+        print(f"Error querying Pinecone: {e}")
+        return None
+
+
+
+
+# def find_recipe_by_ingredients(user_ingredients):
+#     """
+#     Finds the best matching recipes based on provided ingredients using Pinecone.
+#     """
+#     print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+#     print(user_ingredients)
+#     print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+
+#     user_ingredients_text = " ".join(user_ingredients)
+#     print(user_ingredients_text)
+#     print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+
+#     # user_vector = np.random.rand(1536).tolist()  # Simulating proper embedding
+#     user_vector = embeddings.embed_query(user_ingredients_text)
+
+#     # Query Pinecone for all matches
+#     result = index.query(vector=user_vector, top_k=3, include_metadata=True)
+#     print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+#     print(result)
+#     print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+
+#     if result and result['matches']:
+#         matched_recipes = [{
+#             "Dish Name": match["metadata"]["dish_name"],
+#             "YouTube Link": match["metadata"]["recipe_youtube_link"],
+#             "Ingredients": match["metadata"]["ingredients"],
+#             "Steps to Cook": match["metadata"]["cooking_steps"],
+#             "Story": match["metadata"]["story"],
+#             "Thumbnail Image": match["metadata"]["dish_image"],
+#             "Recipe URL": match["metadata"]["recipe_url"]
+#         } for match in result['matches']]
+#         return matched_recipes
+#     else:
+#         return None
     
+
+
+
 
 def store_all_recipe_data_in_pinecone():
     all_receipes_info = []

@@ -7,24 +7,40 @@ genai.configure(api_key=GOOGLE_API_KEY)
 llm  = genai.GenerativeModel('gemini-1.5-pro-latest')
 
 def generate_food_or_ingredients_in_image(img):
+    # response = llm.generate_content([
+    #     "Analyze image and provide list of what are main ingredients(Eg:- Colliflower) detected which we can use to cook in JSON format", 
+    #     img
+    # ])
     response = llm.generate_content([
-        "Analyze image and provide list of what are main ingredients(Eg:- Colliflower) detected which we can use to cook in JSON format", 
-        img
-    ])
+            "Analyze the image and provide a list of detected food ingredients in JSON format. "
+            "The response **MUST** strictly follow this structure:\n"
+            '{\n  "ingredients": ["Tomato Puree", "Jam", "Yogurt", "Chocolate Spread", "Pickle", "Milk", "Gochujang", "Butter", "Soy Sauce", "Pickles", "Orange", "Juice"]\n}'
+            "\nOnly include actual food ingredients and nothing else."
+            "\nEnsure the response contains no additional text, explanations, or formatting issues."
+            "\nIf no valid ingredients are detected, return an empty list in the same format."
+            "\nExample of an empty response:"
+            '\n{\n  "ingredients": []\n}'
+            "\nStrictly follow this format with no additional information."
+            , img
+        ])
+
+    print("isme arha hai")
 
     if response.candidates:
     # Extract the text from the first candidate
         raw_text = response.candidates[0].content.parts[0].text
-        
+        print(raw_text)
         # Parse JSON from the raw text
         try:
             # print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
             # print(raw_text)
             cleaned_text = clean_raw_text(raw_text)
+            # print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
             # print(cleaned_text)
             # print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
             parsed_result = json.loads(cleaned_text)
-            # print(parsed_result)
+            print(parsed_result)
+            
             # print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
             return parsed_result
         except json.JSONDecodeError as e:

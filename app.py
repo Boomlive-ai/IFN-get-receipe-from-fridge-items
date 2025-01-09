@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-import os
+import os, json
 import asyncio
 from dotenv import load_dotenv
 from tools.detect_items import detect_items
@@ -182,15 +182,44 @@ async def get_recipe_from_image():
         try:
             # Run detect_items asynchronously
             detected_items = await asyncio.to_thread(detect_items, file_path)
-            print(detected_items)
-            detected_ingredients = [item["name"] for item in detected_items["ingredients"]]
-            print("**********************************************************************************")
-            print(detected_ingredients)
+
+            # Debugging logs
+            # print("Type of detected_items:", type(detected_items))
+            # print("Contents of detected_items:", detected_items)
+
+            # Parse detected_items if it's a string
+            if isinstance(detected_items, str):
+                try:
+                    detected_items = json.loads(detected_items)
+                except json.JSONDecodeError as e:
+                    return jsonify({"error": f"Failed to parse JSON from detect_items: {str(e)}"}), 500
+
+            # Ensure detected_items is a dictionary with "ingredients" key
+            if not isinstance(detected_items, dict) or "ingredients" not in detected_items:
+                return jsonify({"error": "Invalid response structure from detect_items"}), 500
+
+
+            detected_ingredients = detected_items["ingredients"]
+         # Case 1: If detected_ingredients is a list of names
+            if isinstance(detected_ingredients, list) and isinstance(detected_ingredients[0], str):
+                detected_ingredients = detected_ingredients
+            
+            # Case 2: If detected_ingredients is a list of dictionaries with 'name'
+            elif isinstance(detected_ingredients, list) and isinstance(detected_ingredients[0], dict):
+                detected_ingredients=  [ingredient['name'] for ingredient in detected_ingredients if 'name' in ingredient]
+            # Extract ingredients
+
+            # print("Detected ingredients:", detected_ingredients)
+            # ingredient_names = [ingredient['name'] for ingredient in detected_ingredients]
+            # print("Detected ingredients names:", ingredient_names)
+
             if not detected_ingredients:
                 return jsonify({"error": "No ingredients detected"}), 400
+
             
             # Call find_recipe_by_ingredients asynchronously
-            matched_recipes = await asyncio.to_thread(find_recipe_by_ingredients, detected_ingredients)
+            # matched_recipes = await asyncio.to_thread(find_recipe_by_ingredients, detected_ingredients)
+            matched_recipes = await find_recipe_by_ingredients(detected_ingredients)
 
             if matched_recipes:
                 return jsonify(matched_recipes), 200
