@@ -56,7 +56,7 @@ def clean_raw_text(raw_text):
     # Remove starting and ending backticks with "json" marker
     raw_text = raw_text.lstrip('```json').rstrip('```').strip()
 
-    # Extract JSON content within curly braces
+    # Extract JSON content within curly braces    
     json_match = re.search(r'{.*}', raw_text, re.DOTALL)
     if json_match:
         return json_match.group(0).strip()  # Extract and clean
