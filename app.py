@@ -242,9 +242,9 @@ async def get_recipe():
     user_ingredients = request.args.getlist('ingredients')
     if not user_ingredients:
         return jsonify({"error": "No ingredients provided"}), 400
-    
+    print(user_ingredients)
     # Run find_recipe_by_ingredients asynchronously
-    matched_recipe = await asyncio.to_thread(find_recipe_by_ingredients, user_ingredients)
+    matched_recipe = await find_recipe_by_ingredients(user_ingredients)
 
     if matched_recipe:
         return jsonify(matched_recipe), 200
