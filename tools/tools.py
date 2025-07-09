@@ -9,6 +9,8 @@ import os
 # Initialize Pinecone
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 from dotenv import load_dotenv
+from tools.youtube_service import YouTubeService
+
 # Load environment variables from .env file
 load_dotenv()
 # Initialize Pinecone
@@ -177,16 +179,17 @@ def fetch_recipe_data():
     else:
         print("Failed to fetch API response.")
         return None
-    
+
 
 import asyncio
+from tools.youtube_service import YouTubeService
+
 async def find_recipe_by_ingredients(user_ingredients):
     """
-    Finds the best matching recipes based on provided ingredients using Pinecone asynchronously.
+    Finds the best matching recipes based on provided ingredients using Pinecone asynchronously,
+    and fetches similar YouTube videos from India Food Network channel.
     """
-    # Print the ingredients
     user_ingredients_text = " ".join(user_ingredients)
-    # print("Ingredients Text:", user_ingredients_text)
 
     # Generate embedding for the user-provided ingredients asynchronously
     try:
@@ -195,30 +198,91 @@ async def find_recipe_by_ingredients(user_ingredients):
         print(f"Error generating embedding: {e}")
         return None
 
-    # Query Pinecone for matches asynchronously (using keyword arguments)
+    # Query Pinecone for matches asynchronously
     try:
         result = await asyncio.to_thread(index.query, vector=user_vector, top_k=3, include_metadata=True)
-        # print("Query Result:", result)
 
-        if result and result.get('matches'):
-            matched_recipes = [
-                {
-                    "Dish Name": match["metadata"]["dish_name"],
-                    "YouTube Link": match["metadata"]["recipe_youtube_link"],
-                    "Ingredients": match["metadata"]["ingredients"],
-                    "Steps to Cook": match["metadata"]["cooking_steps"],
-                    "Story": match["metadata"]["story"],
-                    "Thumbnail Image": match["metadata"]["dish_image"],
-                    "Recipe URL": match["metadata"]["recipe_url"]
-                }
-                for match in result['matches']
-            ]
-            return matched_recipes
-        else:
+        if not result or not result.get('matches'):
             return None
+
+        # Initialize YouTubeService (outside the loop for reuse)
+        try:
+            yt_service = YouTubeService()
+        except ValueError as e:
+            print(f"YouTubeService error: {e}")
+            yt_service = None
+
+        matched_recipes = []
+        for match in result['matches']:
+            dish_name = match["metadata"]["dish_name"]
+
+            # Fetch related videos from YouTube
+            similar_youtube_videos = []
+            if yt_service:
+                similar_youtube_videos = await asyncio.to_thread(
+                    yt_service.search_recipe_videos,
+                    recipe_name=dish_name,
+                    max_results=3
+                )
+
+            matched_recipes.append({
+                "Dish Name": dish_name,
+                "YouTube Link": match["metadata"]["recipe_youtube_link"],
+                "Ingredients": match["metadata"]["ingredients"],
+                "Steps to Cook": match["metadata"]["cooking_steps"],
+                "Story": match["metadata"]["story"],
+                "Thumbnail Image": match["metadata"]["dish_image"],
+                "Recipe URL": match["metadata"]["recipe_url"],
+                "Similar YouTube Videos": similar_youtube_videos  # List of similar videos from same channel
+            })
+
+        return matched_recipes
+
     except Exception as e:
         print(f"Error querying Pinecone: {e}")
         return None
+
+
+# import asyncio
+# async def find_recipe_by_ingredients(user_ingredients):
+#     """
+#     Finds the best matching recipes based on provided ingredients using Pinecone asynchronously.
+#     """
+#     # Print the ingredients
+#     user_ingredients_text = " ".join(user_ingredients)
+#     # print("Ingredients Text:", user_ingredients_text)
+
+#     # Generate embedding for the user-provided ingredients asynchronously
+#     try:
+#         user_vector = await asyncio.to_thread(embeddings.embed_query, user_ingredients_text)
+#     except Exception as e:
+#         print(f"Error generating embedding: {e}")
+#         return None
+
+#     # Query Pinecone for matches asynchronously (using keyword arguments)
+#     try:
+#         result = await asyncio.to_thread(index.query, vector=user_vector, top_k=3, include_metadata=True)
+#         # print("Query Result:", result)
+
+#         if result and result.get('matches'):
+#             matched_recipes = [
+#                 {
+#                     "Dish Name": match["metadata"]["dish_name"],
+#                     "YouTube Link": match["metadata"]["recipe_youtube_link"],
+#                     "Ingredients": match["metadata"]["ingredients"],
+#                     "Steps to Cook": match["metadata"]["cooking_steps"],
+#                     "Story": match["metadata"]["story"],
+#                     "Thumbnail Image": match["metadata"]["dish_image"],
+#                     "Recipe URL": match["metadata"]["recipe_url"]
+#                 }
+#                 for match in result['matches']
+#             ]
+#             return matched_recipes
+#         else:
+#             return None
+#     except Exception as e:
+#         print(f"Error querying Pinecone: {e}")
+#         return None
 
 
 
