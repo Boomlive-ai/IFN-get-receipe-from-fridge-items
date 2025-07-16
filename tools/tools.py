@@ -200,7 +200,7 @@ async def find_recipe_by_ingredients(user_ingredients):
 
     # Query Pinecone for matches asynchronously
     try:
-        result = await asyncio.to_thread(index.query, vector=user_vector, top_k=3, include_metadata=True)
+        result = await asyncio.to_thread(index.query, vector=user_vector, top_k=10, include_metadata=True)
 
         if not result or not result.get('matches'):
             return None
