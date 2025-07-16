@@ -51,7 +51,7 @@ class YouTubeService:
                 q=handle,
                 type='channel',
                 part='id,snippet',
-                maxResults=10
+                maxResults=3
             ).execute()
             
             # Look for exact match
