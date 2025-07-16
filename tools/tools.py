@@ -222,7 +222,7 @@ async def find_recipe_by_ingredients(user_ingredients):
                 similar_youtube_videos = await asyncio.to_thread(
                     yt_service.search_recipe_videos,
                     recipe_name=dish_name,
-                    max_results=3
+                    max_results=20
                 )
 
             matched_recipes.append({
