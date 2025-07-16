@@ -68,7 +68,7 @@ def generate_food_or_ingredients_in_image(img):
                 return {"error": f"Failed to process image: {str(e)}"}
         
         response = client.chat.completions.create(
-            model="gpt-4o",  # Using latest OpenAI model
+            model="gpt-4.1-mini",  # Using latest OpenAI model
             messages=[
                 {
                     "role": "user",
