@@ -224,7 +224,14 @@ async def find_recipe_by_ingredients(user_ingredients):
                     recipe_name=dish_name,
                     max_results=10
                 )
-
+             # Clean up the recipe URL by removing category paths
+            recipe_url = match["metadata"]["recipe_url"]
+            if "/recipes/" in recipe_url:
+                # Extract base URL and recipe name
+                base_url = recipe_url.split("/recipes/")[0] + "/recipes/"
+                recipe_name_with_id = recipe_url.split("/")[-1]  # Get the last part (recipe-name-id)
+                recipe_url = base_url + recipe_name_with_id
+                
             matched_recipes.append({
                 "Dish Name": dish_name,
                 "YouTube Link": match["metadata"]["recipe_youtube_link"],
@@ -232,7 +239,7 @@ async def find_recipe_by_ingredients(user_ingredients):
                 "Steps to Cook": match["metadata"]["cooking_steps"],
                 "Story": match["metadata"]["story"],
                 "Thumbnail Image": match["metadata"]["dish_image"],
-                "Recipe URL": match["metadata"]["recipe_url"],
+                "Recipe URL": recipe_url, #match["metadata"]["recipe_url"],
                 "Similar YouTube Videos": similar_youtube_videos  # List of similar videos from same channel
             })
 
