@@ -141,6 +141,10 @@ def home():
                 "request_params_GET": {
                     "query": "Natural language recipe query (e.g., ?query=I want to make butter chicken) [Required]"
                 },
+                "request_body_POST": {
+                    "query": "Natural language recipe query [Required]",
+                    "max_results": "Maximum number of results to return (optional, default: 24)"
+                },
                 "response": {
                     "200": {
                         "example": {
@@ -149,13 +153,13 @@ def home():
                             "recipes": [
                                 {
                                     "Dish Name": "Butter Chicken",
-                                    "YouTube Link": "https://youtube.com/watch?v=...",
-                                    "Ingredients": "chicken, butter, tomatoes...",
-                                    "Steps to Cook": "1. Marinate chicken...",
-                                    "Story": "Traditional Indian dish...",
+                                    "YouTube Link": "https://youtube.com/watch?v=example",
+                                    "Ingredients": "chicken, butter, tomatoes, cream, spices",
+                                    "Steps to Cook": "1. Marinate chicken 2. Cook in butter 3. Add sauce",
+                                    "Story": "Traditional Indian dish loved worldwide",
                                     "Thumbnail Image": "https://example.com/image.jpg",
                                     "Recipe URL": "https://example.com/recipe",
-                                    "Similar YouTube Videos": [...],
+                                    "Similar YouTube Videos": ["video1", "video2"],
                                     "Match Score": 0.95
                                 }
                             ]
