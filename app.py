@@ -3,7 +3,7 @@ import os, json
 import asyncio
 from dotenv import load_dotenv
 from tools.detect_items import detect_items
-from tools.tools import fetch_youtube_link, find_recipe_by_ingredients, fetch_recipe_data, store_all_recipe_data_in_pinecone
+from tools.tools import fetch_youtube_link, find_recipe_by_ingredients, fetch_recipe_data, store_all_recipe_data_in_pinecone,find_recipe_using_query
 from flask_cors import CORS  # Import CORS
 
 # Load environment variables
@@ -133,6 +133,45 @@ def home():
                         }
                     }
                 }
+            },
+            {
+                "route": "/find_recipe_by_query",
+                "method": ["GET"],
+                "description": "Find recipes using natural language queries like 'I want to make butter chicken'",
+                "request_params_GET": {
+                    "query": "Natural language recipe query (e.g., ?query=I want to make butter chicken) [Required]"
+                },
+                "response": {
+                    "200": {
+                        "example": {
+                            "query": "I want to make butter chicken",
+                            "recipes_found": 3,
+                            "recipes": [
+                                {
+                                    "Dish Name": "Butter Chicken",
+                                    "YouTube Link": "https://youtube.com/watch?v=...",
+                                    "Ingredients": "chicken, butter, tomatoes...",
+                                    "Steps to Cook": "1. Marinate chicken...",
+                                    "Story": "Traditional Indian dish...",
+                                    "Thumbnail Image": "https://example.com/image.jpg",
+                                    "Recipe URL": "https://example.com/recipe",
+                                    "Similar YouTube Videos": [...],
+                                    "Match Score": 0.95
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "example": {
+                            "error": "No query provided"
+                        }
+                    },
+                    "404": {
+                        "example": {
+                            "error": "No matching recipes found"
+                        }
+                    }
+                }
             }
         ]
     }), 200
@@ -236,6 +275,7 @@ def fetch_recipe_data_and_store_it_in_pinecone():
     result = fetch_recipe_data()
     return jsonify({"result": result})
 
+
 @app.route('/find_recipe', methods=['GET'])
 async def get_recipe():
     """Get a recipe suggestion based on user input ingredients"""
@@ -260,6 +300,32 @@ async def store_recipes():
         return jsonify(stored_recipes), 200
     else:
         return jsonify({"error": "No matching recipe found"}), 404
+    
+@app.route('/find_recipe_by_query', methods=['GET'])
+async def get_recipe_by_query():
+    """Get recipe suggestions based on natural language query"""
+    query = request.args.get('query')
+    
+    if not query:
+        return jsonify({"error": "No query provided"}), 400
+    
+    print(f"Received query: {query}")
+    
+    try:
+        # Run find_recipe_using_query asynchronously
+        matched_recipes = await find_recipe_using_query(query)
+
+        if matched_recipes:
+            return jsonify({
+                "query": query,
+                "recipes_found": len(matched_recipes),
+                "recipes": matched_recipes
+            }), 200
+        else:
+            return jsonify({"error": "No matching recipes found"}), 404
+            
+    except Exception as e:
+        return jsonify({"error": f"Failed to process query: {str(e)}"}), 500
 if __name__ == '__main__':
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=5000)

@@ -5,7 +5,9 @@ import pinecone
 from langchain_pinecone import PineconeVectorStore
 from langchain_openai import OpenAIEmbeddings
 from pinecone import Pinecone
-import os
+import os,re,asyncio
+from openai import AsyncOpenAI
+
 # Initialize Pinecone
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 from dotenv import load_dotenv
@@ -180,7 +182,135 @@ def fetch_recipe_data():
         print("Failed to fetch API response.")
         return None
 
+# Initialize OpenAI client
+client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+async def extract_dish_name_with_gpt(user_query):
+    """
+    Use GPT-4o-mini to extract dish name from natural language query
+    """
+    try:
+        prompt = f"""
+Extract only the dish name from this cooking query. Return just the dish name, nothing else.
+
+Examples:
+"I want to make butter chicken" -> "butter chicken"
+"How do I cook chicken biryani?" -> "chicken biryani"
+"Recipe for chocolate cake please" -> "chocolate cake"
+"Can you help me prepare dal makhani?" -> "dal makhani"
+"What's the best way to make pasta carbonara?" -> "pasta carbonara"
+"I'm craving some paneer tikka" -> "paneer tikka"
+
+Query: "{user_query}"
+
+Dish name:"""
+
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that extracts dish names from cooking queries. Return only the dish name, nothing else."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=50,
+            temperature=0.1  # Low temperature for consistent extraction
+        )
+        
+        extracted_dish = response.choices[0].message.content.strip()
+        
+        # Fallback to regex if GPT returns empty or invalid response
+        if not extracted_dish or len(extracted_dish) > 100:
+            return fallback_extract_dish_name(user_query)
+            
+        return extracted_dish.lower()
+        
+    except Exception as e:
+        print(f"Error with GPT extraction: {e}")
+        # Fallback to regex method
+        return fallback_extract_dish_name(user_query)
+
+def fallback_extract_dish_name(query):
+    """
+    Fallback regex-based extraction if GPT fails
+    """
+    cleaned = re.sub(r'\b(i want to make|how to make|recipe for|cooking|prepare|cook|help me|can you|what\'s the|best way to)\b', '', query.lower())
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned if cleaned else query.lower()
+
+async def find_recipe_using_query(user_query):
+    """
+    Finds recipes based on natural language query using GPT-4o-mini for better processing
+    """
+    print(f"Processing query: '{user_query}'")
+    
+    # Use GPT to extract dish name
+    processed_query = await extract_dish_name_with_gpt(user_query)
+    print(f"Original query: '{user_query}' -> GPT extracted: '{processed_query}'")
+    
+    # Generate embedding for the processed query
+    try:
+        user_vector = await asyncio.to_thread(embeddings.embed_query, processed_query)
+    except Exception as e:
+        print(f"Error generating embedding: {e}")
+        return None
+
+    # Query Pinecone for matches
+    try:
+        result = await asyncio.to_thread(index.query, vector=user_vector, top_k=24, include_metadata=True)
+
+        if not result or not result.get('matches'):
+            return None
+
+        # Initialize YouTubeService
+        try:
+            yt_service = YouTubeService()
+        except ValueError as e:
+            print(f"YouTubeService error: {e}")
+            yt_service = None
+
+        matched_recipes = []
+        for match in result['matches']:
+            dish_name = match["metadata"]["dish_name"]
+
+            # Fetch related videos from YouTube
+            similar_youtube_videos = []
+            if yt_service:
+                try:
+                    similar_youtube_videos = await asyncio.to_thread(
+                        yt_service.search_recipe_videos,
+                        recipe_name=dish_name,
+                        max_results=10
+                    )
+                except Exception as e:
+                    print(f"Error fetching YouTube videos for {dish_name}: {e}")
+                    similar_youtube_videos = []
+            
+            # Clean up the recipe URL
+            recipe_url = match["metadata"]["recipe_url"]
+            if "/recipes/" in recipe_url:
+                base_url = recipe_url.split("/recipes/")[0] + "/recipes/"
+                recipe_name_with_id = recipe_url.split("/")[-1]
+                recipe_url = base_url + recipe_name_with_id
+                
+            matched_recipes.append({
+                "Dish Name": dish_name,
+                "YouTube Link": match["metadata"]["recipe_youtube_link"],
+                "Ingredients": match["metadata"]["ingredients"],
+                "Steps to Cook": match["metadata"]["cooking_steps"],
+                "Story": match["metadata"]["story"],
+                "Thumbnail Image": match["metadata"]["dish_image"],
+                "Recipe URL": recipe_url,
+                "Similar YouTube Videos": similar_youtube_videos,
+                "Match Score": match.get("score", 0),
+                "Extracted Query": processed_query  # Show what was actually searched
+            })
+
+        # Sort by relevance score (highest first)
+        matched_recipes.sort(key=lambda x: x["Match Score"], reverse=True)
+        return matched_recipes
+
+    except Exception as e:
+        print(f"Error querying Pinecone: {e}")
+        return None
 import asyncio
 from tools.youtube_service import YouTubeService
 
