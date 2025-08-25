@@ -7,12 +7,14 @@ from langchain_openai import OpenAIEmbeddings
 from pinecone import Pinecone
 import os,re,asyncio
 from openai import AsyncOpenAI
+from openai import OpenAI
 
 # Initialize Pinecone
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 from dotenv import load_dotenv
 from tools.youtube_service import YouTubeService
-
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+client = OpenAI(api_key=OPENAI_API_KEY)
 # Load environment variables from .env file
 load_dotenv()
 # Initialize Pinecone
@@ -497,3 +499,78 @@ def store_all_recipe_data_in_pinecone():
             break
 
     return all_receipes_info
+
+async def get_festival_recipes(festivals_data, top_dishes=5, top_recipes=3):
+    """
+    Complete flow: festivals -> LLM dishes -> vector store recipes
+    
+    Args:
+        festivals_data (list): List of festival dicts with 'name' key
+        top_dishes (int): Number of dishes to get from LLM per festival
+        top_recipes (int): Number of recipes to get from vector store per dish
+    
+    Returns:
+        dict: Festival name mapped to recipes
+    """
+    results = {}
+    print(festivals_data, "Festivals DATA")
+    
+    for festival in festivals_data:
+        festival_name = festival.get('name', '')
+        if not festival_name:
+            continue
+            
+        try:
+            # Step 1: Get dishes from LLM
+            prompt = f"List {top_dishes} traditional dishes for {festival_name}. Return only dish names, one per line."
+            
+            response = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Return only dish names, one per line."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=100,
+                temperature=0.3
+            )
+            
+            # Parse dishes
+            dishes = [dish.strip().split('.', 1)[-1].strip() for dish in response.choices[0].message.content.strip().split('\n') if dish.strip()]
+            print("DISHES", dishes)
+            # Step 2: Search each dish in vector store
+            festival_recipes = []
+            for dish in dishes[:top_dishes]:
+                try:
+                    # Generate embedding and search
+                    dish_vector = await asyncio.to_thread(embeddings.embed_query, dish.lower())
+                    result = await asyncio.to_thread(index.query, vector=dish_vector, top_k=top_recipes, include_metadata=True)
+                    
+                    # Extract recipes
+                    if result and result.get('matches'):
+                        for match in result['matches']:
+                            if match.get('score', 0) > 0.7:  # Quality threshold
+                                festival_recipes.append({
+                                    "dish_name": match["metadata"]["dish_name"],
+                                    "ingredients": match["metadata"]["ingredients"],
+                                    "cooking_steps": match["metadata"]["cooking_steps"],
+                                    "recipe_url": match["metadata"]["recipe_url"],
+                                    "thumbnail": match["metadata"].get("dish_image", ""),
+                                    "youtube_link": match["metadata"].get("recipe_youtube_link", ""),
+                                    "suggested_for": dish,
+                                    "score": match.get('score', 0)
+                                })
+                except Exception as e:
+                    print(f"Error searching dish '{dish}': {e}")
+                    continue
+            
+            # Remove duplicates and sort by score
+            unique_recipes = {recipe["dish_name"]: recipe for recipe in festival_recipes}
+            sorted_recipes = sorted(unique_recipes.values(), key=lambda x: x["score"], reverse=True)
+            
+            results[festival_name] = sorted_recipes
+            
+        except Exception as e:
+            print(f"Error processing festival '{festival_name}': {e}")
+            results[festival_name] = []
+    
+    return results

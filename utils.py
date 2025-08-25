@@ -6,6 +6,8 @@ from openai import OpenAI
 from PIL import Image
 import io
 
+import requests
+from datetime import datetime, timedelta
 # Commented out Gemini code
 # import google.generativeai as genai
 # GOOGLE_API_KEY=os.getenv('GOOGLE_API_KEY')
@@ -151,3 +153,82 @@ def clean_raw_text(raw_text):
 def to_markdown(text):
     text = text.replace('•', '  *')
     return Markdown(textwrap.indent(text, '> ', predicate=lambda _: True))
+def get_festivals(api_key=None, start_date=None, end_date=None):
+    """Get festivals in specified date range in India"""
+    import requests
+    from datetime import datetime, timedelta
+    
+    # Default to current week if no dates provided
+    if not start_date or not end_date:
+        today = datetime.now()
+        start_date = (today - timedelta(days=today.weekday())).date()
+        end_date = (start_date + timedelta(days=6))
+    
+    festivals_in_range = []
+    
+    try:
+        # Primary source: calendar-bharat
+        years_to_check = list(set([start_date.year, end_date.year]))
+        
+        for year in years_to_check:
+            calendar_url = f"https://jayantur13.github.io/calendar-bharat/calendar/{year}.json"
+            r = requests.get(calendar_url, timeout=10)
+            
+            if r.status_code == 200:
+                calendar_data = r.json()
+                
+                # Navigate through the correct structure: year -> month -> date
+                year_data = calendar_data.get(str(year), {})
+                
+                for month_name, month_data in year_data.items():
+                    # month_name is like "January 2025", "February 2025", etc.
+                    
+                    for date_key, event_info in month_data.items():
+                        # date_key is like "January 1, 2025, Wednesday"
+                        try:
+                            # Extract just the date part (remove day name)
+                            # Split by comma and take first two parts
+                            date_parts = date_key.split(', ')
+                            if len(date_parts) >= 2:
+                                date_str = f"{date_parts[0]}, {date_parts[1]}"  # "January 1, 2025"
+                                event_date = datetime.strptime(date_str, "%B %d, %Y").date()
+                                
+                                if start_date <= event_date <= end_date:
+                                    # Get event details
+                                    event_name = event_info.get('event', '')
+                                    event_type = event_info.get('type', '')
+                                    
+                                    # Filter for festivals (include both "Religional Festival" and other festival types)
+                                    if ('Festival' in event_type or 
+                                        'Government Holiday' in event_type or 
+                                        event_type == 'Good to know'):
+                                        
+                                        festivals_in_range.append({
+                                            'date': event_date.strftime('%Y-%m-%d'),
+                                            'name': event_name,
+                                            'type': event_type,
+                                            'extras': event_info.get('extras', ''),
+                                            'source': 'calendar-bharat'
+                                        })
+                        
+                        except (ValueError, IndexError) as e:
+                            # Skip invalid date entries
+                            print(f"Error parsing date '{date_key}': {e}")
+                            continue
+    except Exception as e:
+        print(f"Error fetching festivals: {e}")
+        return []
+    
+    # Remove duplicates and sort by date
+    unique_festivals = {}
+    for festival in festivals_in_range:
+        key = f"{festival['date']}_{festival['name']}"
+        if key not in unique_festivals:
+            unique_festivals[key] = festival
+    
+    # Sort by date
+    result = list(unique_festivals.values())
+    result.sort(key=lambda x: x['date'])
+    
+    # Clean response format (remove extra fields for API response)
+    return [{'date': f['date'], 'name': f['name']} for f in result]

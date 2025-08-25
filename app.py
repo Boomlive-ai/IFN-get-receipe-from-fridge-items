@@ -3,8 +3,9 @@ import os, json
 import asyncio
 from dotenv import load_dotenv
 from tools.detect_items import detect_items
-from tools.tools import fetch_youtube_link, find_recipe_by_ingredients, fetch_recipe_data, store_all_recipe_data_in_pinecone,find_recipe_using_query
+from tools.tools import fetch_youtube_link, find_recipe_by_ingredients, fetch_recipe_data, store_all_recipe_data_in_pinecone,find_recipe_using_query, get_festival_recipes
 from flask_cors import CORS  # Import CORS
+from utils import get_festivals  # Import the new festival function
 
 # Load environment variables
 load_dotenv()
@@ -176,6 +177,33 @@ def home():
                         }
                     }
                 }
+            },
+            {
+                "route": "/festivals",
+                "method": "GET",
+                "description": "Get Indian festivals happening in the current week",
+                "request_params": {
+                    "api_key": "Optional API key for enhanced results"
+                },
+                "response": {
+                    "200": {
+                        "example": {
+                            "current_week": "Aug 19-25, 2025",
+                            "festivals_count": 2,
+                            "festivals": [
+                                {
+                                    "date": "2025-08-20",
+                                    "name": "Raksha Bandhan"
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "example": {
+                            "error": "Failed to fetch festivals"
+                        }
+                    }
+                }
             }
         ]
     }), 200
@@ -330,6 +358,162 @@ async def get_recipe_by_query():
             
     except Exception as e:
         return jsonify({"error": f"Failed to process query: {str(e)}"}), 500
+    
+@app.route('/festivals', methods=['GET'])
+def get_festivals_api():
+    """Get Indian festivals for current week, current month, or custom date range"""
+    api_key = request.args.get('api_key')
+    start_date_param = request.args.get('start_date')  # Format: YYYY-MM-DD
+    end_date_param = request.args.get('end_date')      # Format: YYYY-MM-DD
+    range_type = request.args.get('range', 'week')     # Options: 'week', 'month', 'custom'
+    
+    try:
+        from datetime import datetime, timedelta
+        import calendar
+        
+        today = datetime.now()
+        
+        # Determine date range based on parameters
+        if range_type == 'custom':
+            if not start_date_param or not end_date_param:
+                return jsonify({
+                    "error": "start_date and end_date are required for custom range"
+                }), 400
+            
+            try:
+                start_date = datetime.strptime(start_date_param, '%Y-%m-%d')
+                end_date = datetime.strptime(end_date_param, '%Y-%m-%d')
+                
+                if start_date > end_date:
+                    return jsonify({"error": "start_date must be before or equal to end_date"}), 400
+                    
+                date_range_label = f"{start_date.strftime('%b %d')}-{end_date.strftime('%d, %Y')}"
+                range_description = "Custom Range"
+                
+            except ValueError:
+                return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+                
+        elif range_type == 'month':
+            # Current month
+            start_date = today.replace(day=1)  # First day of current month
+            # Last day of current month
+            last_day = calendar.monthrange(today.year, today.month)[1]
+            end_date = today.replace(day=last_day)
+            
+            date_range_label = f"{start_date.strftime('%b %d')}-{end_date.strftime('%d, %Y')}"
+            range_description = "Current Month"
+            
+        elif range_type == 'week':
+            # Current week (Monday to Sunday)
+            start_date = today - timedelta(days=today.weekday())
+            end_date = start_date + timedelta(days=6)
+            
+            date_range_label = f"{start_date.strftime('%b %d')}-{end_date.strftime('%d, %Y')}"
+            range_description = "Current Week"
+            
+        else:
+            return jsonify({
+                "error": "Invalid range parameter. Use 'week', 'month', or 'custom'"
+            }), 400
+        
+        # Override with custom dates if provided (even for week/month)
+        if start_date_param and end_date_param and range_type != 'custom':
+            try:
+                start_date = datetime.strptime(start_date_param, '%Y-%m-%d')
+                end_date = datetime.strptime(end_date_param, '%Y-%m-%d')
+                
+                if start_date > end_date:
+                    return jsonify({"error": "start_date must be before or equal to end_date"}), 400
+                    
+                date_range_label = f"{start_date.strftime('%b %d')}-{end_date.strftime('%d, %Y')}"
+                range_description = f"Custom {range_type.title()}"
+                
+            except ValueError:
+                return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+        
+        # Fetch festivals
+        festivals = get_festivals(api_key, start_date.date(), end_date.date())
+        
+        # Prepare response
+        response_data = {
+            "range_type": range_type,
+            "range_description": range_description,
+            "date_range": date_range_label,
+            "start_date": start_date.strftime('%Y-%m-%d'),
+            "end_date": end_date.strftime('%Y-%m-%d'),
+            "festivals_count": len(festivals),
+            "festivals": festivals
+        }
+        
+        if not festivals:
+            response_data["message"] = f"No festivals found in the {range_description.lower()}"
+        
+        return jsonify(response_data), 200
+            
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch festivals: {str(e)}"}), 500
+
+
+# Optional: Add a separate endpoint for quick access to different ranges
+@app.route('/festivals/week', methods=['GET'])
+def get_current_week_festivals():
+    """Get festivals for current week"""
+    api_key = request.args.get('api_key')
+    request.args = request.args.copy()
+    request.args['range'] = 'week'
+    return get_festivals_api()
+
+@app.route('/festival-recipes', methods=['GET'])
+def festival_recipes():
+    """
+    GET /festival-recipes?range=week|month|custom&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+    Returns festivals for the specified range and LLM-picked dishes with their recipes.
+    """
+    from datetime import datetime, timedelta
+    import calendar, asyncio
+
+    api_key = request.args.get('api_key')
+    range_type = request.args.get('range', 'week')
+    start_date_param = request.args.get('start_date')
+    end_date_param = request.args.get('end_date')
+
+    today = datetime.now()
+    
+    # Determine the date range
+    if range_type == 'custom' and start_date_param and end_date_param:
+        start_date = datetime.strptime(start_date_param, "%Y-%m-%d")
+        end_date = datetime.strptime(end_date_param, "%Y-%m-%d")
+    elif range_type == 'month':
+        start_date = today.replace(day=1)
+        end_date = today.replace(day=calendar.monthrange(today.year, today.month)[1])
+    else:  # default to week
+        start_date = today - timedelta(days=today.weekday())
+        end_date = start_date + timedelta(days=6)
+
+    # Step 1: Fetch festivals
+    festivals = get_festivals(api_key, start_date.date(), end_date.date())
+
+    # Step 2: Use your existing function to get recipes
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    festival_recipes = loop.run_until_complete(get_festival_recipes(festivals))
+    loop.close()
+
+    # Format response to match your data structure
+    results = []
+    for festival in festivals:
+        festival_name = festival["name"]
+        recipes = festival_recipes.get(festival_name, [])
+        results.append({
+            "festival": festival_name,
+            "date": festival["date"],
+            "recipes": recipes
+        })
+
+    return jsonify({"results": results})
+
+
+
 if __name__ == '__main__':
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=5000)
