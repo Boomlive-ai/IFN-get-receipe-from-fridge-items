@@ -137,14 +137,10 @@ def home():
             },
             {
                 "route": "/find_recipe_by_query",
-                "method": ["GET"],
+                "method": "GET",
                 "description": "Find recipes using natural language queries like 'I want to make butter chicken'",
-                "request_params_GET": {
+                "request_params": {
                     "query": "Natural language recipe query (e.g., ?query=I want to make butter chicken) [Required]"
-                },
-                "request_body_POST": {
-                    "query": "Natural language recipe query [Required]",
-                    "max_results": "Maximum number of results to return (optional, default: 24)"
                 },
                 "response": {
                     "200": {
@@ -181,14 +177,21 @@ def home():
             {
                 "route": "/festivals",
                 "method": "GET",
-                "description": "Get Indian festivals happening in the current week",
+                "description": "Get Indian festivals for flexible date ranges",
                 "request_params": {
-                    "api_key": "Optional API key for enhanced results"
+                    "api_key": "Optional API key for enhanced results",
+                    "range": "Range type: 'week' (default), 'month', or 'custom'",
+                    "start_date": "Start date for custom range (YYYY-MM-DD format)",
+                    "end_date": "End date for custom range (YYYY-MM-DD format)"
                 },
                 "response": {
                     "200": {
                         "example": {
-                            "current_week": "Aug 19-25, 2025",
+                            "range_type": "week",
+                            "range_description": "Current Week",
+                            "date_range": "Aug 19-25, 2025",
+                            "start_date": "2025-08-19",
+                            "end_date": "2025-08-25",
                             "festivals_count": 2,
                             "festivals": [
                                 {
@@ -198,12 +201,114 @@ def home():
                             ]
                         }
                     },
+                    "400": {
+                        "example": {
+                            "error": "Invalid range parameter / Missing required dates"
+                        }
+                    },
                     "500": {
                         "example": {
                             "error": "Failed to fetch festivals"
                         }
                     }
                 }
+            },
+            {
+                "route": "/festivals/week",
+                "method": "GET",
+                "description": "Quick access to current week's festivals",
+                "request_params": {
+                    "api_key": "Optional API key for enhanced results"
+                },
+                "response": {
+                    "200": {
+                        "example": {
+                            "range_type": "week",
+                            "range_description": "Current Week",
+                            "festivals_count": 1,
+                            "festivals": [
+                                {
+                                    "date": "2025-08-20",
+                                    "name": "Raksha Bandhan"
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "route": "/festival-recipes",
+                "method": "GET",
+                "description": "Get festivals and their traditional recipes with complete recipe data from India Food Network",
+                "request_params": {
+                    "api_key": "Optional API key for enhanced festival results",
+                    "range": "Range type: 'week' (default), 'month', or 'custom'",
+                    "start_date": "Start date for custom range (YYYY-MM-DD format)",
+                    "end_date": "End date for custom range (YYYY-MM-DD format)"
+                },
+                "response": {
+                    "200": {
+                        "example": {
+                            "results": [
+                                {
+                                    "festival": "Baisakhi",
+                                    "date": "2025-04-13",
+                                    "recipes": [
+                                        {
+                                            "heading": "Baisakhi Special: Saagwala Mutton",
+                                            "thumbUrl": "https://indiafoodnetwork.in/wp-content/uploads/2017/04/Saag-wala-mutton.jpg",
+                                            "url": "https://www.indiafoodnetwork.in/recipes/baisakhi-special-saagwala-mutton",
+                                            "tags": ["meat", "mutton", "spinach", "Regional New Year", "Baisakhi"],
+                                            "youtube_videos": [
+                                                {
+                                                    "video_id": "fB4XmyDFe7w",
+                                                    "youtube_url": "https://www.youtube.com/watch?v=fB4XmyDFe7w",
+                                                    "embed_url": "//www.youtube.com/embed/fB4XmyDFe7w",
+                                                    "title": "Saagwala mutton",
+                                                    "description": "Mutton marinated in spices and curd..."
+                                                }
+                                            ],
+                                            "description": "Baisakhi is almost here, and it's time to celebrate the festival with a rich Punjabi dish...",
+                                            "author": "Seema Gadh",
+                                            "date_created": "2017-04-12 11:50:40.0",
+                                            "main_category": "Cook at Home",
+                                            "keywords": "",
+                                            "news_id": 683799
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "example": {
+                            "error": "Invalid date format / Missing required parameters"
+                        }
+                    },
+                    "500": {
+                        "example": {
+                            "error": "Failed to fetch festival recipes"
+                        }
+                    }
+                }
+            }
+        ],
+        "usage_examples": [
+            {
+                "description": "Get current week's festivals with recipes",
+                "url": "/festival-recipes"
+            },
+            {
+                "description": "Get current month's festivals with recipes", 
+                "url": "/festival-recipes?range=month"
+            },
+            {
+                "description": "Get festivals and recipes for custom date range",
+                "url": "/festival-recipes?range=custom&start_date=2025-04-01&end_date=2025-04-30"
+            },
+            {
+                "description": "Get festivals for specific date range",
+                "url": "/festivals?range=custom&start_date=2025-04-01&end_date=2025-04-15"
             }
         ]
     }), 200
