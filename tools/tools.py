@@ -500,77 +500,213 @@ def store_all_recipe_data_in_pinecone():
 
     return all_receipes_info
 
-async def get_festival_recipes(festivals_data, top_dishes=5, top_recipes=3):
+# async def get_festival_recipes(festivals_data, top_dishes=5, top_recipes=3):
+#     """
+#     Complete flow: festivals -> LLM dishes -> vector store recipes
+    
+#     Args:
+#         festivals_data (list): List of festival dicts with 'name' key
+#         top_dishes (int): Number of dishes to get from LLM per festival
+#         top_recipes (int): Number of recipes to get from vector store per dish
+    
+#     Returns:
+#         dict: Festival name mapped to recipes
+#     """
+#     results = {}
+#     print(festivals_data, "Festivals DATA")
+    
+#     for festival in festivals_data:
+#         festival_name = festival.get('name', '')
+#         if not festival_name:
+#             continue
+            
+#         try:
+#             # Step 1: Get dishes from LLM
+#             prompt = f"List {top_dishes} traditional dishes for {festival_name}. Return only dish names, one per line."
+            
+#             response = await client.chat.completions.create(
+#                 model="gpt-4o-mini",
+#                 messages=[
+#                     {"role": "system", "content": "Return only dish names, one per line."},
+#                     {"role": "user", "content": prompt}
+#                 ],
+#                 max_tokens=100,
+#                 temperature=0.3
+#             )
+            
+#             # Parse dishes
+#             dishes = [dish.strip().split('.', 1)[-1].strip() for dish in response.choices[0].message.content.strip().split('\n') if dish.strip()]
+#             print("DISHES", dishes)
+#             # Step 2: Search each dish in vector store
+#             festival_recipes = []
+#             for dish in dishes[:top_dishes]:
+#                 try:
+#                     # Generate embedding and search
+#                     dish_vector = await asyncio.to_thread(embeddings.embed_query, dish.lower())
+#                     result = await asyncio.to_thread(index.query, vector=dish_vector, top_k=top_recipes, include_metadata=True)
+                    
+#                     # Extract recipes
+#                     if result and result.get('matches'):
+#                         for match in result['matches']:
+#                             if match.get('score', 0) > 0.7:  # Quality threshold
+#                                 festival_recipes.append({
+#                                     "dish_name": match["metadata"]["dish_name"],
+#                                     "ingredients": match["metadata"]["ingredients"],
+#                                     "cooking_steps": match["metadata"]["cooking_steps"],
+#                                     "recipe_url": match["metadata"]["recipe_url"],
+#                                     "thumbnail": match["metadata"].get("dish_image", ""),
+#                                     "youtube_link": match["metadata"].get("recipe_youtube_link", ""),
+#                                     "suggested_for": dish,
+#                                     "score": match.get('score', 0)
+#                                 })
+#                 except Exception as e:
+#                     print(f"Error searching dish '{dish}': {e}")
+#                     continue
+            
+#             # Remove duplicates and sort by score
+#             unique_recipes = {recipe["dish_name"]: recipe for recipe in festival_recipes}
+#             sorted_recipes = sorted(unique_recipes.values(), key=lambda x: x["score"], reverse=True)
+            
+#             results[festival_name] = sorted_recipes
+            
+#         except Exception as e:
+#             print(f"Error processing festival '{festival_name}': {e}")
+#             results[festival_name] = []
+    
+#     return results
+
+
+import asyncio
+import aiohttp
+import re
+from typing import Dict, List, Optional
+from bs4 import BeautifulSoup
+import json
+
+def extract_youtube_videos_from_story(story_html: str) -> List[Dict[str, str]]:
+    """Extract YouTube video information from the HTML story content"""
+    videos = []
+    if not story_html:
+        return videos
+    
+    try:
+        soup = BeautifulSoup(story_html, 'html.parser')
+        
+        # Find all iframe elements with YouTube embeds
+        iframes = soup.find_all('iframe', src=re.compile(r'youtube\.com/embed/'))
+        
+        for iframe in iframes:
+            src = iframe.get('src', '')
+            video_match = re.search(r'youtube\.com/embed/([a-zA-Z0-9_-]+)', src)
+            
+            if video_match:
+                video_id = video_match.group(1)
+                
+                # Try to find description from surrounding elements
+                description = ""
+                title = ""
+                
+                # Look for heading before the iframe
+                previous_elements = iframe.find_all_previous(['h2', 'h3', 'h4', 'p'])
+                for elem in previous_elements[:3]:  # Check last 3 elements
+                    if elem.name in ['h2', 'h3', 'h4'] and elem.get_text(strip=True):
+                        title = elem.get_text(strip=True)
+                        break
+                
+                # Look for description in nearby paragraphs
+                next_p = iframe.find_next('p')
+                if next_p:
+                    description = next_p.get_text(strip=True)
+                
+                videos.append({
+                    'video_id': video_id,
+                    'youtube_url': f"https://www.youtube.com/watch?v={video_id}",
+                    'embed_url': src,
+                    'title': title,
+                    'description': description
+                })
+    except Exception as e:
+        print(f"Error extracting YouTube videos: {e}")
+    
+    return videos
+
+async def get_festival_recipes(festivals_data: List[Dict], session_id: str = "Wp9Bmsyz2ZmDkNqNTPC69SLS9spXooIpjXUPW3tiqIMO5EZ8PUBwHLtavO8iPCa1") -> Dict[str, List[Dict]]:
     """
-    Complete flow: festivals -> LLM dishes -> vector store recipes
+    Fetch festival recipes from India Food Network API
     
     Args:
         festivals_data (list): List of festival dicts with 'name' key
-        top_dishes (int): Number of dishes to get from LLM per festival
-        top_recipes (int): Number of recipes to get from vector store per dish
+        session_id (str): API session ID for authentication
     
     Returns:
-        dict: Festival name mapped to recipes
+        dict: Festival name mapped to recipes with extracted data
     """
-    results = {}
-    print(festivals_data, "Festivals DATA")
+    base_url = "https://indiafoodnetwork.in/dev/h-api/news"
+    headers = {
+        'accept': '*/*',
+        's-id': session_id
+    }
     
-    for festival in festivals_data:
-        festival_name = festival.get('name', '')
-        if not festival_name:
-            continue
+    results = {}
+    
+    async with aiohttp.ClientSession() as session:
+        for festival in festivals_data:
+            festival_name = festival.get('name', '')
+            if not festival_name:
+                continue
             
-        try:
-            # Step 1: Get dishes from LLM
-            prompt = f"List {top_dishes} traditional dishes for {festival_name}. Return only dish names, one per line."
-            
-            response = await client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "Return only dish names, one per line."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=100,
-                temperature=0.3
-            )
-            
-            # Parse dishes
-            dishes = [dish.strip().split('.', 1)[-1].strip() for dish in response.choices[0].message.content.strip().split('\n') if dish.strip()]
-            print("DISHES", dishes)
-            # Step 2: Search each dish in vector store
-            festival_recipes = []
-            for dish in dishes[:top_dishes]:
-                try:
-                    # Generate embedding and search
-                    dish_vector = await asyncio.to_thread(embeddings.embed_query, dish.lower())
-                    result = await asyncio.to_thread(index.query, vector=dish_vector, top_k=top_recipes, include_metadata=True)
-                    
-                    # Extract recipes
-                    if result and result.get('matches'):
-                        for match in result['matches']:
-                            if match.get('score', 0) > 0.7:  # Quality threshold
-                                festival_recipes.append({
-                                    "dish_name": match["metadata"]["dish_name"],
-                                    "ingredients": match["metadata"]["ingredients"],
-                                    "cooking_steps": match["metadata"]["cooking_steps"],
-                                    "recipe_url": match["metadata"]["recipe_url"],
-                                    "thumbnail": match["metadata"].get("dish_image", ""),
-                                    "youtube_link": match["metadata"].get("recipe_youtube_link", ""),
-                                    "suggested_for": dish,
-                                    "score": match.get('score', 0)
-                                })
-                except Exception as e:
-                    print(f"Error searching dish '{dish}': {e}")
-                    continue
-            
-            # Remove duplicates and sort by score
-            unique_recipes = {recipe["dish_name"]: recipe for recipe in festival_recipes}
-            sorted_recipes = sorted(unique_recipes.values(), key=lambda x: x["score"], reverse=True)
-            
-            results[festival_name] = sorted_recipes
-            
-        except Exception as e:
-            print(f"Error processing festival '{festival_name}': {e}")
-            results[festival_name] = []
+            try:
+                # Make API request
+                params = {'search': festival_name}
+                
+                async with session.get(base_url, params=params, headers=headers) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        recipes = []
+                        
+                        # Process each news item (recipe)
+                        for item in data.get('news', []):
+                            try:
+                                # Extract YouTube videos from story
+                                youtube_videos = extract_youtube_videos_from_story(item.get('story', ''))
+                                
+                                # Extract tags - convert from string to list if needed
+                                tags = item.get('tags', '')
+                                if isinstance(tags, str):
+                                    tags = [tag.strip() for tag in tags.split(',') if tag.strip()]
+                                elif not isinstance(tags, list):
+                                    tags = []
+                                
+                                recipe_data = {
+                                    'heading': item.get('heading', ''),
+                                    'thumbUrl': item.get('thumbUrl', ''),
+                                    'url': item.get('url', ''),
+                                    'tags': tags,
+                                    'youtube_videos': youtube_videos,
+                                    'description': item.get('description', ''),
+                                    # 'author': item.get('authorName', ''),
+                                    # 'date_created': item.get('date_created', ''),
+                                    # 'main_category': item.get('maincat_name', ''),
+                                    # 'story_html': item.get('story', ''),  # Full HTML content
+                                    'keywords': item.get('keywords', ''),
+                                    # 'news_id': item.get('newsId', ''),
+                                }
+                                
+                                recipes.append(recipe_data)
+                                
+                            except Exception as e:
+                                print(f"Error processing recipe item: {e}")
+                                continue
+                        
+                        results[festival_name] = recipes
+                        print(f"Found {len(recipes)} recipes for {festival_name}")
+                        
+                    else:
+                        print(f"API request failed for {festival_name}: {response.status}")
+                        results[festival_name] = []
+                        
+            except Exception as e:
+                print(f"Error fetching recipes for {festival_name}: {e}")
+                results[festival_name] = []
     
     return results
