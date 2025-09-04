@@ -570,20 +570,19 @@ def get_current_week_festivals():
 
 @app.route('/festival-recipes', methods=['GET'])
 def festival_recipes():
-    """
+    '''
     GET /festival-recipes?range=week|month|custom&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
     Returns festivals for the specified range and LLM-picked dishes with their recipes.
-    """
+    '''
     from datetime import datetime, timedelta
     import calendar, asyncio
 
-    api_key = request.args.get('api_key')
     range_type = request.args.get('range', 'week')
     start_date_param = request.args.get('start_date')
     end_date_param = request.args.get('end_date')
 
     today = datetime.now()
-    
+
     # Determine the date range
     if range_type == 'custom' and start_date_param and end_date_param:
         start_date = datetime.strptime(start_date_param, "%Y-%m-%d")
@@ -595,8 +594,21 @@ def festival_recipes():
         start_date = today - timedelta(days=today.weekday())
         end_date = start_date + timedelta(days=6)
 
-    # Step 1: Fetch festivals
-    festivals = get_festivals(api_key, start_date.date(), end_date.date())
+    print(f"[DEBUG] Route: range_type={range_type}, start_date={start_date.date()}, end_date={end_date.date()}")
+
+    # Step 1: Fetch festivals using updated function
+    festivals = get_festivals(
+        start_date=start_date.date(),
+        end_date=end_date.date(),
+        range_type=range_type
+    )
+    print("###################################################################################################")
+    print(festivals)
+    print("###################################################################################################")
+
+    print(f"[DEBUG] Festivals found: {len(festivals)}")
+    print(get_festival_recipes("Eid Recipes"))
+    print("###################################################################################################")
 
     # Step 2: Use your existing function to get recipes
     loop = asyncio.new_event_loop()
@@ -604,7 +616,9 @@ def festival_recipes():
     festival_recipes = loop.run_until_complete(get_festival_recipes(festivals))
     loop.close()
 
-    # Format response to match your data structure
+    # print(f"[DEBUG] Recipes fetched: {festival_recipes}")
+
+    # Format response
     results = []
     for festival in festivals:
         festival_name = festival["name"]
@@ -616,7 +630,6 @@ def festival_recipes():
         })
 
     return jsonify({"results": results})
-
 
 
 if __name__ == '__main__':

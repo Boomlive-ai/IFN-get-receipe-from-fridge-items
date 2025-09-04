@@ -657,8 +657,10 @@ async def get_festival_recipes(festivals_data: List[Dict], session_id: str = "Wp
             
             try:
                 # Make API request
-                params = {'search': festival_name}
-                
+                params = {
+                    'search': festival_name,
+                    'searchType': 'Tags'
+                }                
                 async with session.get(base_url, params=params, headers=headers) as response:
                     if response.status == 200:
                         data = await response.json()
