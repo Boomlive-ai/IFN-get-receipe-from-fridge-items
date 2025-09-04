@@ -630,85 +630,79 @@ def extract_youtube_videos_from_story(story_html: str) -> List[Dict[str, str]]:
     
     return videos
 
-async def get_festival_recipes(festivals_data: List[Dict], session_id: str = "Wp9Bmsyz2ZmDkNqNTPC69SLS9spXooIpjXUPW3tiqIMO5EZ8PUBwHLtavO8iPCa1") -> Dict[str, List[Dict]]:
+
+
+async def get_festival_recipes(
+    festivals_data: List[Dict],
+    session_id: str = "Wp9Bmsyz2ZmDkNqNTPC69SLS9spXooIpjXUPW3tiqIMO5EZ8PUBwHLtavO8iPCa1"
+) -> Dict[str, List[Dict]]:
+
     """
-    Fetch festival recipes from India Food Network API
-    
-    Args:
-        festivals_data (list): List of festival dicts with 'name' key
-        session_id (str): API session ID for authentication
-    
-    Returns:
-        dict: Festival name mapped to recipes with extracted data
+    Fetch festival recipes from India Food Network API.
+    First tries with searchType=Tags, falls back to plain search if no recipes found.
     """
+
     base_url = "https://indiafoodnetwork.in/dev/h-api/news"
     headers = {
-        'accept': '*/*',
-        's-id': session_id
+        "accept": "*/*",
+        "s-id": session_id,
     }
-    
+
     results = {}
-    
+
     async with aiohttp.ClientSession() as session:
         for festival in festivals_data:
-            festival_name = festival.get('name', '')
+            festival_name = festival.get("name", "")
             if not festival_name:
                 continue
-            
-            try:
-                # Make API request
-                params = {
-                    'search': festival_name,
-                    'searchType': 'Tags'
-                }                
+
+            recipes = []
+
+            async def fetch_recipes(params):
+                """Helper to fetch and parse recipes"""
+                nonlocal recipes
                 async with session.get(base_url, params=params, headers=headers) as response:
                     if response.status == 200:
                         data = await response.json()
-                        recipes = []
-                        
-                        # Process each news item (recipe)
-                        for item in data.get('news', []):
+                        for item in data.get("news", []):
                             try:
-                                # Extract YouTube videos from story
-                                youtube_videos = extract_youtube_videos_from_story(item.get('story', ''))
-                                
-                                # Extract tags - convert from string to list if needed
-                                tags = item.get('tags', '')
+                                youtube_videos = extract_youtube_videos_from_story(item.get("story", ""))
+
+                                tags = item.get("tags", "")
                                 if isinstance(tags, str):
-                                    tags = [tag.strip() for tag in tags.split(',') if tag.strip()]
+                                    tags = [tag.strip() for tag in tags.split(",") if tag.strip()]
                                 elif not isinstance(tags, list):
                                     tags = []
-                                
+
                                 recipe_data = {
-                                    'heading': item.get('heading', ''),
-                                    'thumbUrl': item.get('thumbUrl', ''),
-                                    'url': item.get('url', ''),
-                                    'tags': tags,
-                                    'youtube_videos': youtube_videos,
-                                    'description': item.get('description', ''),
-                                    # 'author': item.get('authorName', ''),
-                                    # 'date_created': item.get('date_created', ''),
-                                    # 'main_category': item.get('maincat_name', ''),
-                                    # 'story_html': item.get('story', ''),  # Full HTML content
-                                    'keywords': item.get('keywords', ''),
-                                    # 'news_id': item.get('newsId', ''),
+                                    "heading": item.get("heading", ""),
+                                    "thumbUrl": item.get("thumbUrl", ""),
+                                    "url": item.get("url", ""),
+                                    "tags": tags,
+                                    "youtube_videos": youtube_videos,
+                                    "description": item.get("description", ""),
+                                    "keywords": item.get("keywords", ""),
                                 }
-                                
                                 recipes.append(recipe_data)
-                                
                             except Exception as e:
                                 print(f"Error processing recipe item: {e}")
-                                continue
-                        
-                        results[festival_name] = recipes
-                        print(f"Found {len(recipes)} recipes for {festival_name}")
-                        
                     else:
                         print(f"API request failed for {festival_name}: {response.status}")
-                        results[festival_name] = []
-                        
+
+            try:
+                # 1. Try with searchType=Tags
+                await fetch_recipes({"search": festival_name, "searchType": "Tags"})
+
+                # 2. If no recipes found, fallback to plain search
+                if not recipes:
+                    print(f"No recipes found with tags for {festival_name}, retrying without tags...")
+                    await fetch_recipes({"search": festival_name})
+
+                results[festival_name] = recipes
+                print(f"Found {len(recipes)} recipes for {festival_name}")
+
             except Exception as e:
                 print(f"Error fetching recipes for {festival_name}: {e}")
                 results[festival_name] = []
-    
+
     return results
