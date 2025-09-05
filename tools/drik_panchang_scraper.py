@@ -57,7 +57,7 @@ class DrikPanchangFestivalScraper:
             "Sec-Fetch-Site": "none",
             "Cache-Control": "max-age=0",
         }
-        
+        import time
         session = requests.Session()
         session.headers.update(headers)
         
