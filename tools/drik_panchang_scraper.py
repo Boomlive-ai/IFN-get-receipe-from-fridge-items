@@ -4,7 +4,9 @@ from datetime import datetime, timedelta
 import re
 from collections import OrderedDict
 from typing import List, Dict, Optional
-
+import time
+import random
+import json
 # Constants
 MONTH_NAMES = (
     "January","February","March","April","May","June",
@@ -39,9 +41,7 @@ class DrikPanchangFestivalScraper:
     """Scraper for DrikPanchang Indian Festival Calendar"""
 
     # --- Helpers ---
-    import time
-    import random
-    import json
+    
 
     @staticmethod
     def _fetch_html(year: int) -> BeautifulSoup:
