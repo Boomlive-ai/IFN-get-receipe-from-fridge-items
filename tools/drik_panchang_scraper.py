@@ -13,7 +13,7 @@ MONTH_NAMES = (
 DATE_RE = re.compile(rf"({'|'.join(MONTH_NAMES)})\s+\d{{1,2}},\s+\d{{4}}", re.I)
 
 URLS = [
-    # "https://www.drikpanchang.com/calendars/indian/indiancalendar-{year}.html",
+    "https://www.drikpanchang.com/calendars/indian/indiancalendar.html?year={year}",
     "https://www.drikpanchang.com/calendars/indian/indiancalendar.html"
 ]
 
