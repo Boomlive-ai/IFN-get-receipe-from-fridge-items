@@ -45,18 +45,44 @@ class DrikPanchangFestivalScraper:
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/115.0.0.0 Safari/537.36"
+                "Chrome/120.0.0.0 Safari/537.36"  # Update to latest Chrome version
             ),
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Referer": "https://www.google.com"
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Cache-Control": "max-age=0",
         }
-
-        for u in URLS:
+        
+        session = requests.Session()
+        session.headers.update(headers)
+        
+        for attempt, u in enumerate(URLS):
             url = u.format(year=year)
-            r = requests.get(url, headers=headers, timeout=30)
-            if r.status_code == 200 and len(r.text) > 1000:
-                return BeautifulSoup(r.text, "html.parser")
+            try:
+                # Add delay between attempts
+                if attempt > 0:
+                    time.sleep(2)
+                    
+                r = session.get(url, headers=headers, timeout=30, verify=True)
+                
+                # Debug logging
+                print(f"Attempt {attempt + 1}: Status {r.status_code}, Length {len(r.text)}")
+                
+                if r.status_code == 200 and len(r.text) > 1000:
+                    return BeautifulSoup(r.text, "html.parser")
+                elif r.status_code == 403:
+                    print("Access forbidden - likely blocked by anti-bot protection")
+                elif r.status_code == 429:
+                    print("Rate limited - too many requests")
+                    
+            except requests.exceptions.RequestException as e:
+                print(f"Request failed: {e}")
+                
         raise RuntimeError(f"Failed to fetch calendar for {year}")
 
     @staticmethod
