@@ -39,51 +39,76 @@ class DrikPanchangFestivalScraper:
     """Scraper for DrikPanchang Indian Festival Calendar"""
 
     # --- Helpers ---
+    import time
+    import random
+    import json
+
     @staticmethod
     def _fetch_html(year: int) -> BeautifulSoup:
+        # Rotate User-Agents
+        user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ]
+        
+        session = requests.Session()
+        
+        # More convincing headers
         headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"  # Update to latest Chrome version
-            ),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
+            "User-Agent": random.choice(user_agents),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",  # Added Hindi for Indian site
             "Accept-Encoding": "gzip, deflate, br",
             "Connection": "keep-alive",
             "Upgrade-Insecure-Requests": "1",
             "Sec-Fetch-Dest": "document",
             "Sec-Fetch-Mode": "navigate",
             "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
             "Cache-Control": "max-age=0",
+            "DNT": "1",
+            "Sec-CH-UA": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            "Sec-CH-UA-Mobile": "?0",
+            "Sec-CH-UA-Platform": '"Windows"'
         }
-        import time
-        session = requests.Session()
+        
         session.headers.update(headers)
         
-        for attempt, u in enumerate(URLS):
-            url = u.format(year=year)
-            try:
-                # Add delay between attempts
-                if attempt > 0:
-                    time.sleep(2)
+        # First, visit the homepage to get cookies
+        try:
+            print("Getting initial cookies...")
+            homepage = session.get("https://www.drikpanchang.com", timeout=30)
+            print(f"Homepage status: {homepage.status_code}")
+            time.sleep(random.uniform(2, 4))  # Human-like delay
+        except:
+            pass
+        
+        for attempt in range(3):
+            for u in URLS:
+                url = u.format(year=year)
+                try:
+                    if attempt > 0:
+                        delay = random.uniform(3, 7)  # Longer random delays
+                        print(f"Waiting {delay:.1f}s before retry...")
+                        time.sleep(delay)
                     
-                r = session.get(url, headers=headers, timeout=30, verify=True)
-                
-                # Debug logging
-                print(f"Attempt {attempt + 1}: Status {r.status_code}, Length {len(r.text)}")
-                
-                if r.status_code == 200 and len(r.text) > 1000:
-                    return BeautifulSoup(r.text, "html.parser")
-                elif r.status_code == 403:
-                    print("Access forbidden - likely blocked by anti-bot protection")
-                elif r.status_code == 429:
-                    print("Rate limited - too many requests")
+                    print(f"Attempt {attempt + 1}: Fetching {url}")
+                    r = session.get(url, timeout=45)
                     
-            except requests.exceptions.RequestException as e:
-                print(f"Request failed: {e}")
-                
-        raise RuntimeError(f"Failed to fetch calendar for {year}")
+                    print(f"Status: {r.status_code}, Length: {len(r.text)}")
+                    
+                    if r.status_code == 200 and len(r.text) > 1000:
+                        return BeautifulSoup(r.text, "html.parser")
+                    elif r.status_code == 403:
+                        print("Still blocked - trying next URL or retry")
+                        continue
+                        
+                except requests.exceptions.RequestException as e:
+                    print(f"Request failed: {e}")
+                    continue
+        
+        raise RuntimeError(f"Failed to fetch calendar for {year} - all attempts blocked")
 
     @staticmethod
     def _parse_li_text(li_text: str) -> Optional[Dict[str,str]]:
