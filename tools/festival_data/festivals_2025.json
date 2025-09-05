@@ -1,0 +1,455 @@
+{
+  "year": 2025,
+  "generated_at": "2025-09-05T20:33:01.677821",
+  "source": "DrikPanchang",
+  "festivals": {
+    "January 2025": [
+      {
+        "date": "2025-01-01",
+        "name": "English New Year"
+      },
+      {
+        "date": "2025-01-06",
+        "name": "Guru Gobind Singh Jayanti"
+      },
+      {
+        "date": "2025-01-10",
+        "name": "Tailang Swami Jayanti"
+      },
+      {
+        "date": "2025-01-12",
+        "name": "Swami Vivekananda Jayanti"
+      },
+      {
+        "date": "2025-01-12",
+        "name": "National Youth Day"
+      },
+      {
+        "date": "2025-01-13",
+        "name": "Hazarat Ali's Birthday"
+      },
+      {
+        "date": "2025-01-13",
+        "name": "Lohri"
+      },
+      {
+        "date": "2025-01-14",
+        "name": "Makara Sankranti"
+      },
+      {
+        "date": "2025-01-14",
+        "name": "Pongal"
+      },
+      {
+        "date": "2025-01-21",
+        "name": "Vivekananda Jayanti *Samvat"
+      },
+      {
+        "date": "2025-01-23",
+        "name": "Subhas Chandra Bose Jayanti"
+      },
+      {
+        "date": "2025-01-26",
+        "name": "Republic Day"
+      },
+      {
+        "date": "2025-01-30",
+        "name": "Gandhi Punyatithi"
+      }
+    ],
+    "February 2025": [
+      {
+        "date": "2025-02-02",
+        "name": "Vasant Panchami"
+      },
+      {
+        "date": "2025-02-04",
+        "name": "World Cancer Day"
+      },
+      {
+        "date": "2025-02-12",
+        "name": "Guru Ravidas Jayanti"
+      },
+      {
+        "date": "2025-02-14",
+        "name": "Valentine's Day"
+      },
+      {
+        "date": "2025-02-19",
+        "name": "Chhatrapati Shivaji Maharaj Jayanti"
+      },
+      {
+        "date": "2025-02-23",
+        "name": "Maharishi Dayanand Saraswati Jayanti"
+      },
+      {
+        "date": "2025-02-26",
+        "name": "Maha Shivaratri"
+      }
+    ],
+    "March 2025": [
+      {
+        "date": "2025-03-01",
+        "name": "Ramakrishna Jayanti"
+      },
+      {
+        "date": "2025-03-08",
+        "name": "International Women's Day"
+      },
+      {
+        "date": "2025-03-13",
+        "name": "Chhoti Holi"
+      },
+      {
+        "date": "2025-03-13",
+        "name": "Holika Dahan"
+      },
+      {
+        "date": "2025-03-14",
+        "name": "Chaitanya Mahaprabhu Jayanti"
+      },
+      {
+        "date": "2025-03-14",
+        "name": "Holi"
+      },
+      {
+        "date": "2025-03-17",
+        "name": "Chhatrapati Shivaji Maharaj Jayanti"
+      },
+      {
+        "date": "2025-03-20",
+        "name": "Vernal Equinox"
+      },
+      {
+        "date": "2025-03-20",
+        "name": "Parsi New Year"
+      },
+      {
+        "date": "2025-03-23",
+        "name": "Shaheed Diwas"
+      },
+      {
+        "date": "2025-03-28",
+        "name": "Jamat Ul-Vida"
+      },
+      {
+        "date": "2025-03-30",
+        "name": "Ugadi"
+      },
+      {
+        "date": "2025-03-30",
+        "name": "Gudi Padwa"
+      },
+      {
+        "date": "2025-03-30",
+        "name": "Jhulelal Jayanti"
+      },
+      {
+        "date": "2025-03-31",
+        "name": "Eid Recipes"
+      },
+      {
+        "date": "2025-03-31",
+        "name": "Ramadan"
+      }
+    ],
+    "April 2025": [
+      {
+        "date": "2025-04-06",
+        "name": "Rama Navami"
+      },
+      {
+        "date": "2025-04-10",
+        "name": "Mahavir Swami Jayanti"
+      },
+      {
+        "date": "2025-04-14",
+        "name": "Solar New Year"
+      },
+      {
+        "date": "2025-04-14",
+        "name": "Ambedkar Jayanti"
+      },
+      {
+        "date": "2025-04-14",
+        "name": "Baisakhi"
+      },
+      {
+        "date": "2025-04-18",
+        "name": "Good Friday"
+      },
+      {
+        "date": "2025-04-20",
+        "name": "Easter"
+      },
+      {
+        "date": "2025-04-22",
+        "name": "Earth Day"
+      },
+      {
+        "date": "2025-04-24",
+        "name": "Vallabhacharya Jayanti"
+      }
+    ],
+    "May 2025": [
+      {
+        "date": "2025-05-01",
+        "name": "International Workers' Day"
+      },
+      {
+        "date": "2025-05-02",
+        "name": "Shankaracharya Jayanti"
+      },
+      {
+        "date": "2025-05-02",
+        "name": "Surdas Jayanti"
+      },
+      {
+        "date": "2025-05-04",
+        "name": "World Laughter Day"
+      },
+      {
+        "date": "2025-05-07",
+        "name": "Rabindranath Tagore Jayanti"
+      },
+      {
+        "date": "2025-05-11",
+        "name": "Mother's Day"
+      },
+      {
+        "date": "2025-05-12",
+        "name": "Buddha Purnima"
+      },
+      {
+        "date": "2025-05-29",
+        "name": "Maharana Pratap Jayanti"
+      },
+      {
+        "date": "2025-05-31",
+        "name": "World No Tobacco Day"
+      }
+    ],
+    "June 2025": [
+      {
+        "date": "2025-06-05",
+        "name": "World Environment Day"
+      },
+      {
+        "date": "2025-06-07",
+        "name": "Eid Recipes"
+      },
+      {
+        "date": "2025-06-07",
+        "name": "Bakrid"
+      },
+      {
+        "date": "2025-06-11",
+        "name": "Kabirdas Jayanti"
+      },
+      {
+        "date": "2025-06-15",
+        "name": "Father's Day"
+      },
+      {
+        "date": "2025-06-21",
+        "name": "Longest Day of Year"
+      },
+      {
+        "date": "2025-06-21",
+        "name": "International Yoga Day"
+      },
+      {
+        "date": "2025-06-27",
+        "name": "Jagannath Rathyatra"
+      },
+      {
+        "date": "2025-06-27",
+        "name": "Al-Hijra"
+      },
+      {
+        "date": "2025-06-27",
+        "name": "Islamic New Year"
+      }
+    ],
+    "July 2025": [
+      {
+        "date": "2025-07-06",
+        "name": "Day of Ashura"
+      },
+      {
+        "date": "2025-07-06",
+        "name": "Muharram"
+      },
+      {
+        "date": "2025-07-10",
+        "name": "Guru Purnima"
+      },
+      {
+        "date": "2025-07-31",
+        "name": "Tulsidas Jayanti"
+      }
+    ],
+    "August 2025": [
+      {
+        "date": "2025-08-03",
+        "name": "Friendship Day"
+      },
+      {
+        "date": "2025-08-09",
+        "name": "Raksha Bandhan"
+      },
+      {
+        "date": "2025-08-09",
+        "name": "Rakhi"
+      },
+      {
+        "date": "2025-08-15",
+        "name": "Janmashtami *Smarta"
+      },
+      {
+        "date": "2025-08-15",
+        "name": "Independence Day"
+      },
+      {
+        "date": "2025-08-16",
+        "name": "Janmashtami *ISKCON"
+      },
+      {
+        "date": "2025-08-27",
+        "name": "Ganesh Chaturthi"
+      }
+    ],
+    "September 2025": [
+      {
+        "date": "2025-09-05",
+        "name": "Onam"
+      },
+      {
+        "date": "2025-09-05",
+        "name": "Milad un-Nabi"
+      },
+      {
+        "date": "2025-09-05",
+        "name": "Eid Recipes"
+      },
+      {
+        "date": "2025-09-05",
+        "name": "Teachers' Day"
+      },
+      {
+        "date": "2025-09-14",
+        "name": "Hindi Diwas"
+      },
+      {
+        "date": "2025-09-15",
+        "name": "Visvesvaraya Jayanti"
+      },
+      {
+        "date": "2025-09-15",
+        "name": "Engineer's Day"
+      },
+      {
+        "date": "2025-09-22",
+        "name": "Maharaja Agrasen Jayanti"
+      },
+      {
+        "date": "2025-09-22",
+        "name": "Autumnal Equinox"
+      },
+      {
+        "date": "2025-09-30",
+        "name": "Durga Ashtami"
+      }
+    ],
+    "October 2025": [
+      {
+        "date": "2025-10-01",
+        "name": "Maha Navami"
+      },
+      {
+        "date": "2025-10-02",
+        "name": "Dussehra"
+      },
+      {
+        "date": "2025-10-02",
+        "name": "Madhvacharya Jayanti"
+      },
+      {
+        "date": "2025-10-02",
+        "name": "Gandhi Jayanti"
+      },
+      {
+        "date": "2025-10-07",
+        "name": "Valmiki Jayanti"
+      },
+      {
+        "date": "2025-10-07",
+        "name": "Meerabai Jayanti"
+      },
+      {
+        "date": "2025-10-10",
+        "name": "Karwa Chauth"
+      },
+      {
+        "date": "2025-10-20",
+        "name": "Lakshmi Puja"
+      },
+      {
+        "date": "2025-10-20",
+        "name": "Narak Chaturdashi"
+      },
+      {
+        "date": "2025-10-20",
+        "name": "Diwali"
+      },
+      {
+        "date": "2025-10-22",
+        "name": "Govardhan Puja"
+      },
+      {
+        "date": "2025-10-23",
+        "name": "Bhaiya Dooj"
+      },
+      {
+        "date": "2025-10-27",
+        "name": "Chhath Puja"
+      }
+    ],
+    "November 2025": [
+      {
+        "date": "2025-11-05",
+        "name": "Guru Nanak Jayanti"
+      },
+      {
+        "date": "2025-11-14",
+        "name": "Nehru Jayanti"
+      },
+      {
+        "date": "2025-11-14",
+        "name": "Children's Day"
+      }
+    ],
+    "December 2025": [
+      {
+        "date": "2025-12-01",
+        "name": "World AIDS Day"
+      },
+      {
+        "date": "2025-12-21",
+        "name": "Shortest Day of Year"
+      },
+      {
+        "date": "2025-12-25",
+        "name": "Merry Christmas"
+      },
+      {
+        "date": "2025-12-27",
+        "name": "Guru Gobind Singh Jayanti"
+      },
+      {
+        "date": "2025-12-30",
+        "name": "Tailang Swami Jayanti"
+      }
+    ]
+  }
+}
