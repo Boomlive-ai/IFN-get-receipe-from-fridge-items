@@ -683,7 +683,7 @@ async def get_festival_recipes(
                                     "description": item.get("description", ""),
                                     "keywords": item.get("keywords", ""),
                                 }
-                                recipes.append(recipe_data)
+                                recipes.append(recipe_data) 
                             except Exception as e:
                                 print(f"Error processing recipe item: {e}")
                     else:
