@@ -238,7 +238,7 @@ def get_festivals(start_date=None, end_date=None, range_type="week"):
     from datetime import datetime, timedelta
     import calendar
     from tools.drik_panchang_scraper import DrikPanchangFestivalScraper
-
+    from tools.festivals import GoogleCalendarFestivalScraper
     today = datetime.now()
 
     # --- Determine date range ---
@@ -264,11 +264,11 @@ def get_festivals(start_date=None, end_date=None, range_type="week"):
 
         if range_type == "month" and start_date.year == end_date.year:
             raw_data = {f"{calendar.month_name[start_date.month]} {year}":
-                        DrikPanchangFestivalScraper.get_festivals_for_month(year, start_date.month)}
+                        GoogleCalendarFestivalScraper.get_festivals_for_month(year, start_date.month)}
         elif range_type == "year":
-            raw_data = DrikPanchangFestivalScraper.get_festivals_for_year(year)
+            raw_data = GoogleCalendarFestivalScraper.get_festivals_for_year(year)
         else:
-            raw_data = DrikPanchangFestivalScraper.get_festivals_for_year(year)
+            raw_data = GoogleCalendarFestivalScraper.get_festivals_for_year(year)
 
         # Flatten monthwise festivals
         for month_name, festivals in raw_data.items():
