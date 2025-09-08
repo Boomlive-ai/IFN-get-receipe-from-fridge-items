@@ -23,7 +23,7 @@ DATA_DIR.mkdir(exist_ok=True)
 
 FESTIVAL_MAPPINGS = {
     "eid": "Eid Recipes",
-    "Milad un-Nabi": "Eid Recipes",
+    "milad": "Eid Recipes",
     "diwali": "Diwali Recipes",
     "durga": "durga-puja",
     "onam": "Onam recipes",

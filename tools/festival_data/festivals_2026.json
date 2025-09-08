@@ -1,0 +1,251 @@
+{
+  "year": 2026,
+  "generated_at": "2025-09-08T15:20:26.438084",
+  "source": "Google Calendar API",
+  "festivals": {
+    "January 2026": [
+      {
+        "date": "2026-01-01",
+        "name": "New Year's Day"
+      },
+      {
+        "date": "2026-01-03",
+        "name": "Hazarat Ali's Birthday"
+      },
+      {
+        "date": "2026-01-14",
+        "name": "Pongal"
+      },
+      {
+        "date": "2026-01-14",
+        "name": "Makar Sankranti"
+      },
+      {
+        "date": "2026-01-23",
+        "name": "Vasant Panchami"
+      },
+      {
+        "date": "2026-01-26",
+        "name": "Republic Day"
+      }
+    ],
+    "February 2026": [
+      {
+        "date": "2026-02-01",
+        "name": "Guru Ravidas Jayanti"
+      },
+      {
+        "date": "2026-02-12",
+        "name": "Maharishi Dayanand Saraswati Jayanti"
+      },
+      {
+        "date": "2026-02-15",
+        "name": "Maha Shivaratri/Shivaratri"
+      },
+      {
+        "date": "2026-02-19",
+        "name": "Shivaji Jayanti"
+      },
+      {
+        "date": "2026-02-19",
+        "name": "Ramadan Start (tentative)"
+      }
+    ],
+    "March 2026": [
+      {
+        "date": "2026-03-03",
+        "name": "Holika Dahana"
+      },
+      {
+        "date": "2026-03-04",
+        "name": "Holi"
+      },
+      {
+        "date": "2026-03-19",
+        "name": "Ugadi"
+      },
+      {
+        "date": "2026-03-19",
+        "name": "Gudi Padwa"
+      },
+      {
+        "date": "2026-03-20",
+        "name": "Jamat Ul-Vida"
+      },
+      {
+        "date": "2026-03-21",
+        "name": "Ramzan Id (tentative)"
+      },
+      {
+        "date": "2026-03-26",
+        "name": "Rama Navami"
+      },
+      {
+        "date": "2026-03-31",
+        "name": "Mahavir Jayanti"
+      }
+    ],
+    "April 2026": [
+      {
+        "date": "2026-04-03",
+        "name": "Good Friday"
+      },
+      {
+        "date": "2026-04-05",
+        "name": "Easter Day"
+      },
+      {
+        "date": "2026-04-14",
+        "name": "Vaisakhi"
+      },
+      {
+        "date": "2026-04-14",
+        "name": "Mesadi"
+      },
+      {
+        "date": "2026-04-14",
+        "name": "Ambedkar Jayanti"
+      },
+      {
+        "date": "2026-04-15",
+        "name": "Bahag Bihu/Vaisakhadi"
+      }
+    ],
+    "May 2026": [
+      {
+        "date": "2026-05-01",
+        "name": "Buddha Purnima/Vesak"
+      },
+      {
+        "date": "2026-05-09",
+        "name": "Birthday of Rabindranath"
+      },
+      {
+        "date": "2026-05-27",
+        "name": "Bakrid (tentative)"
+      }
+    ],
+    "June 2026": [
+      {
+        "date": "2026-06-26",
+        "name": "Muharram/Ashura (tentative)"
+      }
+    ],
+    "July 2026": [
+      {
+        "date": "2026-07-16",
+        "name": "Rath Yatra"
+      }
+    ],
+    "August 2026": [
+      {
+        "date": "2026-08-15",
+        "name": "Independence Day"
+      },
+      {
+        "date": "2026-08-26",
+        "name": "Onam recipes"
+      },
+      {
+        "date": "2026-08-26",
+        "name": "Eid Recipes"
+      },
+      {
+        "date": "2026-08-28",
+        "name": "Raksha Bandhan Recipes"
+      }
+    ],
+    "September 2026": [
+      {
+        "date": "2026-09-04",
+        "name": "Janmashtami"
+      },
+      {
+        "date": "2026-09-04",
+        "name": "Janmashtami (Smarta)"
+      },
+      {
+        "date": "2026-09-14",
+        "name": "Ganesh Chaturthi/Vinayaka Chaturthi"
+      }
+    ],
+    "October 2026": [
+      {
+        "date": "2026-10-02",
+        "name": "Mahatma Gandhi Jayanti"
+      },
+      {
+        "date": "2026-10-11",
+        "name": "Navratri Recipes"
+      },
+      {
+        "date": "2026-10-17",
+        "name": "durga-puja"
+      },
+      {
+        "date": "2026-10-18",
+        "name": "Maha Saptami"
+      },
+      {
+        "date": "2026-10-19",
+        "name": "Maha Ashtami"
+      },
+      {
+        "date": "2026-10-20",
+        "name": "Dussehra"
+      },
+      {
+        "date": "2026-10-26",
+        "name": "Maharishi Valmiki Jayanti"
+      },
+      {
+        "date": "2026-10-29",
+        "name": "Karaka Chaturthi (Karva Chauth)"
+      }
+    ],
+    "November 2026": [
+      {
+        "date": "2026-11-08",
+        "name": "Diwali Recipes"
+      },
+      {
+        "date": "2026-11-08",
+        "name": "Naraka Chaturdasi"
+      },
+      {
+        "date": "2026-11-09",
+        "name": "Govardhan Puja"
+      },
+      {
+        "date": "2026-11-11",
+        "name": "Bhai Duj"
+      },
+      {
+        "date": "2026-11-15",
+        "name": "Chhat Puja (Pratihar Sashthi/Surya Sashthi)"
+      },
+      {
+        "date": "2026-11-24",
+        "name": "Guru Nanak Jayanti"
+      },
+      {
+        "date": "2026-11-24",
+        "name": "Guru Tegh Bahadur's Martyrdom Day"
+      }
+    ],
+    "December 2026": [
+      {
+        "date": "2026-12-23",
+        "name": "Hazarat Ali's Birthday"
+      },
+      {
+        "date": "2026-12-24",
+        "name": "Christmas Eve"
+      },
+      {
+        "date": "2026-12-25",
+        "name": "Christmas"
+      }
+    ]
+  }
+}
