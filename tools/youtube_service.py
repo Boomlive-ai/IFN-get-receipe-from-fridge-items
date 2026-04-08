@@ -19,14 +19,14 @@ class YouTubeService:
         Args:
             api_key: YouTube Data API v3 key. If None, will try to get from environment
         """
-        api_key="AIzaSyAYCO5rrPanqvpoH7IZ-Cob0DxzFjtMDUk"
+        api_key="AIzaSyAZudWt-i92ArrTQfdj_SA6Tmd_cUAKwlY"
         self.api_key = api_key or os.getenv('YOUTUBE_API_KEY')
         print(f"Initializing YouTube service with API key: { os.getenv('YOUTUBE_API_KEY')}")
         if not self.api_key:
             raise ValueError("YouTube API key is required. Set YOUTUBE_API_KEY environment variable or pass api_key parameter.")
         
         self.youtube = build('youtube', 'v3', developerKey=self.api_key)
-        self.channel_id = None
+        self.channel_id = "UCqJkAAmi4QKCPCF62r_-BhQ"
         self.channel_name = "India Food Network"
         self.channel_handle = "@Indiafoodnetwork"
     

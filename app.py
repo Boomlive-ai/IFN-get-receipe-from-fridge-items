@@ -2,8 +2,10 @@ from flask import Flask, request, jsonify
 import os, json
 import asyncio
 from dotenv import load_dotenv
+import requests
 from tools.detect_items import detect_items
-from tools.tools import fetch_youtube_link, find_recipe_by_ingredients, fetch_recipe_data, store_all_recipe_data_in_pinecone,find_recipe_using_query, get_festival_recipes
+# from tools.tools import fetch_youtube_link, find_recipe_by_ingredients, fetch_recipe_data, store_all_recipe_data_in_pinecone,find_recipe_using_query, get_festival_recipes
+from tools.tools import fetch_youtube_link, find_recipe_by_ingredients, fetch_recipe_data, store_all_recipe_data_in_pinecone, find_recipe_using_query, get_festival_recipes, fetch_recipes_by_filter
 from flask_cors import CORS  # Import CORS
 from utils import get_festivals  # Import the new festival function
 
@@ -632,6 +634,68 @@ def festival_recipes():
     return jsonify({"results": results})
 
 
+@app.route('/recipe_by_api', methods=['GET'])
+def recipe_by_api():
+    """
+    Find recipes filtered by recipe_type and preparation_time via India Food Network API.
+    
+    Query params:
+        recipe_type       - e.g. 'breakfast', 'lunch', 'dinner'  [Required]
+        preparation_time  - integer in minutes, e.g. 15           [Required]
+    """
+    recipe_type = request.args.get('recipe_type', '').strip()
+    preparation_time = request.args.get('preparation_time', '').strip()
+
+    if not recipe_type:
+        return jsonify({"error": "recipe_type is required"}), 400
+    if not preparation_time:
+        return jsonify({"error": "preparation_time is required"}), 400
+
+    try:
+        preparation_time = int(preparation_time)
+    except ValueError:
+        return jsonify({"error": "preparation_time must be an integer"}), 400
+
+    try:
+        parent_names, raw_recipes = fetch_recipes_by_filter(recipe_type, preparation_time)
+
+        if not raw_recipes:
+            return jsonify({"error": "No matching recipes found"}), 404
+
+        # Build response in the same shape as find_recipe_by_query
+        recipes = []
+        for item in raw_recipes:
+            recipe_url = f"https://www.indiafoodnetwork.in{item.get('url', '')}"
+            ingredients = [i.get("heading", "") for i in item.get("ingredient", [])]
+            steps = [
+                s.get("description", "")
+                for s in sorted(item.get("cookingstep", []), key=lambda x: x.get("uid", 0))
+            ]
+            recipes.append({
+                "Dish Name":       item.get("heading", ""),
+                "parent_name":     item.get("parent_name", ""),
+                "YouTube Link": item.get("scraped_youtube_link", ""),
+                "Ingredients":     ingredients,
+                "Steps to Cook":   steps,
+                "Story":           item.get("story", ""),
+                "Thumbnail Image": item.get("thumbImage", ""),
+                "Recipe URL":      recipe_url,
+            })
+
+        return jsonify({
+            "recipe_type":        recipe_type,
+            "preparation_time":   preparation_time,
+            "recipes_found":      len(recipes),
+            "parent_names":       parent_names,   # the extracted parent_name list
+            "recipes":            recipes
+        }), 200
+
+    except requests.exceptions.HTTPError as e:
+        return jsonify({"error": f"Upstream API error: {str(e)}"}), 502
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch recipes: {str(e)}"}), 500
+
+
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=5000)
+    app.run(debug=True, host="0.0.0.0", port=5000)

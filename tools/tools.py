@@ -238,6 +238,137 @@ def fallback_extract_dish_name(query):
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     return cleaned if cleaned else query.lower()
 
+# def fetch_recipes_by_filter(recipe_type: str, preparation_time: int):
+#     """
+#     Fetches recipes from India Food Network API filtered by recipe_type and preparation_time.
+#     Returns a list of parent_name values from the response.
+#     """
+#     api_url = "https://www.indiafoodnetwork.in/dev/h-api/contentFilter"
+#     headers = {
+#         "Accept": "*/*",
+#         "Content-Type": "application/json",
+#         "s-id": "Wp9Bmsyz2ZmDkNqNTPC69SLS9spXooIpjXUPW3tiqIMO5EZ8PUBwHLtavO8iPCa1"
+#     }
+#     params = {
+#         "content_type": "recipe",
+#         "param_name": ["recipe_type", "preparation_time"],
+#         "param_value": [recipe_type, str(preparation_time)],
+#         "startIndex": 0,
+#         "count": 10
+#     }
+
+#     response = requests.get(api_url, headers=headers, params=params)
+#     response.raise_for_status()
+#     data = response.json()
+
+#     # Extract parent_name from each item in the news list
+#     recipes = data.get("news", [])
+#     parent_names = [item.get("parent_name") for item in recipes if item.get("parent_name")]
+#     return parent_names, recipes
+
+# def fetch_recipes_by_filter(recipe_type: str, preparation_time: int):
+#     """
+#     Fetches recipes from India Food Network API filtered by recipe_type and preparation_time.
+#     """
+#     api_url = "https://www.indiafoodnetwork.in/dev/h-api/contentFilter"
+#     headers = {
+#         "Accept": "*/*",
+#         "Content-Type": "application/json",
+#         "s-id": "Wp9Bmsyz2ZmDkNqNTPC69SLS9spXooIpjXUPW3tiqIMO5EZ8PUBwHLtavO8iPCa1"
+#     }
+#     params = {
+#         "content_type": "recipe",
+#         "param_name": ["recipe_type", "preparation_time"],
+#         "param_value": [recipe_type, str(preparation_time)],
+#         "startIndex": 0,
+#         "count": 10
+#     }
+
+#     response = requests.get(api_url, headers=headers, params=params)
+#     response.raise_for_status()
+#     data = response.json()
+
+#     recipes = data.get("news", [])
+#     parent_names = [item.get("parent_name") for item in recipes if item.get("parent_name")]
+
+#     # Initialize YouTubeService ONCE outside the loop
+#     try:
+#         yt_service = YouTubeService()
+#         yt_service.get_channel_id()  # Pre-fetch channel ID once, reused for all queries
+#     except ValueError as e:
+#         print(f"YouTubeService error: {e}")
+#         yt_service = None
+
+#     for item in recipes:
+#         dish_name = item.get("heading", "")
+#         similar_videos = []
+
+#         if yt_service and dish_name:
+#             try:
+#                 similar_videos = yt_service.search_recipe_videos(
+#                     recipe_name=dish_name,
+#                     max_results=3  # ← reduced from 10 to 3 to save quota (100 units per search)
+#                 )
+#             except Exception as e:
+#                 print(f"Error fetching YouTube videos for {dish_name}: {e}")
+
+#         item["similar_youtube_videos"] = similar_videos
+#         item["scraped_youtube_link"] = similar_videos[0]["video_url"] if similar_videos else ""
+
+#     return parent_names, recipes
+
+def fetch_recipes_by_filter(recipe_type: str, preparation_time: int):
+    """
+    Fetches recipes from India Food Network API filtered by recipe_type and preparation_time.
+    YouTube link is fetched via YouTubeService (same as find_recipe_using_query).
+    """
+    api_url = "https://www.indiafoodnetwork.in/dev/h-api/contentFilter"
+    headers = {
+        "Accept": "*/*",
+        "Content-Type": "application/json",
+        "s-id": "Wp9Bmsyz2ZmDkNqNTPC69SLS9spXooIpjXUPW3tiqIMO5EZ8PUBwHLtavO8iPCa1"
+    }
+    params = {
+        "content_type": "recipe",
+        "param_name": ["recipe_type", "preparation_time"],
+        "param_value": [recipe_type, str(preparation_time)],
+        "startIndex": 0,
+        "count": 10
+    }
+
+    response = requests.get(api_url, headers=headers, params=params)
+    response.raise_for_status()
+    data = response.json()
+
+    recipes = data.get("news", [])
+    parent_names = [item.get("parent_name") for item in recipes if item.get("parent_name")]
+
+    # Initialize YouTubeService ONCE — channel_id is now hardcoded, no quota wasted
+    try:
+        yt_service = YouTubeService()
+    except ValueError as e:
+        print(f"YouTubeService error: {e}")
+        yt_service = None
+
+    for item in recipes:
+        dish_name = item.get("heading", "")
+        similar_videos = []
+
+        if yt_service and dish_name:
+            try:
+                similar_videos = yt_service.search_recipe_videos(
+                    recipe_name=dish_name,
+                    max_results=3  # 3 is enough, saves quota
+                )
+            except Exception as e:
+                print(f"Error fetching YouTube videos for {dish_name}: {e}")
+
+        item["similar_youtube_videos"] = similar_videos
+        # video_url is the correct key from YouTubeService.search_recipe_videos()
+        item["scraped_youtube_link"] = similar_videos[0]["video_url"] if similar_videos else ""
+
+    return parent_names, recipes
+
 async def find_recipe_using_query(user_query):
     """
     Finds recipes based on natural language query using GPT-4o-mini for better processing

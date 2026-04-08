@@ -8,6 +8,8 @@ import io
 
 import requests
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+load_dotenv()
 # Commented out Gemini code
 # import google.generativeai as genai
 # GOOGLE_API_KEY=os.getenv('GOOGLE_API_KEY')
@@ -16,7 +18,9 @@ from datetime import datetime, timedelta
 
 # OpenAI setup
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-client = OpenAI(api_key=OPENAI_API_KEY)
+# client = OpenAI(api_key=OPENAI_API_KEY)
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def encode_image_to_base64(image_path):
     """Encode image file to base64 for OpenAI API"""
