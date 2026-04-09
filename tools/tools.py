@@ -238,84 +238,43 @@ def fallback_extract_dish_name(query):
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     return cleaned if cleaned else query.lower()
 
-# def fetch_recipes_by_filter(recipe_type: str, preparation_time: int):
-#     """
-#     Fetches recipes from India Food Network API filtered by recipe_type and preparation_time.
-#     Returns a list of parent_name values from the response.
-#     """
-#     api_url = "https://www.indiafoodnetwork.in/dev/h-api/contentFilter"
-#     headers = {
-#         "Accept": "*/*",
-#         "Content-Type": "application/json",
-#         "s-id": "Wp9Bmsyz2ZmDkNqNTPC69SLS9spXooIpjXUPW3tiqIMO5EZ8PUBwHLtavO8iPCa1"
-#     }
-#     params = {
-#         "content_type": "recipe",
-#         "param_name": ["recipe_type", "preparation_time"],
-#         "param_value": [recipe_type, str(preparation_time)],
-#         "startIndex": 0,
-#         "count": 10
-#     }
+def filter_recipes_by_ingredients(recipes, user_ingredients, threshold=50):
+    def normalize(text):
+        return text.strip().lower()
 
-#     response = requests.get(api_url, headers=headers, params=params)
-#     response.raise_for_status()
-#     data = response.json()
+    user_set = set(normalize(i) for i in user_ingredients)
 
-#     # Extract parent_name from each item in the news list
-#     recipes = data.get("news", [])
-#     parent_names = [item.get("parent_name") for item in recipes if item.get("parent_name")]
-#     return parent_names, recipes
+    filtered = []
 
-# def fetch_recipes_by_filter(recipe_type: str, preparation_time: int):
-#     """
-#     Fetches recipes from India Food Network API filtered by recipe_type and preparation_time.
-#     """
-#     api_url = "https://www.indiafoodnetwork.in/dev/h-api/contentFilter"
-#     headers = {
-#         "Accept": "*/*",
-#         "Content-Type": "application/json",
-#         "s-id": "Wp9Bmsyz2ZmDkNqNTPC69SLS9spXooIpjXUPW3tiqIMO5EZ8PUBwHLtavO8iPCa1"
-#     }
-#     params = {
-#         "content_type": "recipe",
-#         "param_name": ["recipe_type", "preparation_time"],
-#         "param_value": [recipe_type, str(preparation_time)],
-#         "startIndex": 0,
-#         "count": 10
-#     }
+    for item in recipes:
+        recipe_ingredients = item.get("Ingredients", [])
+        recipe_set = set(normalize(i) for i in recipe_ingredients)
 
-#     response = requests.get(api_url, headers=headers, params=params)
-#     response.raise_for_status()
-#     data = response.json()
+        matched = set()
 
-#     recipes = data.get("news", [])
-#     parent_names = [item.get("parent_name") for item in recipes if item.get("parent_name")]
+        # ✅ Partial + exact match
+        for r in recipe_set:
+            for u in user_set:
+                if u in r or r in u:
+                    matched.add(r)
+                    break
 
-#     # Initialize YouTubeService ONCE outside the loop
-#     try:
-#         yt_service = YouTubeService()
-#         yt_service.get_channel_id()  # Pre-fetch channel ID once, reused for all queries
-#     except ValueError as e:
-#         print(f"YouTubeService error: {e}")
-#         yt_service = None
+        if not recipe_set:
+            continue
 
-#     for item in recipes:
-#         dish_name = item.get("heading", "")
-#         similar_videos = []
+        match_percentage = (len(matched) / len(recipe_set)) * 100
 
-#         if yt_service and dish_name:
-#             try:
-#                 similar_videos = yt_service.search_recipe_videos(
-#                     recipe_name=dish_name,
-#                     max_results=3  # ← reduced from 10 to 3 to save quota (100 units per search)
-#                 )
-#             except Exception as e:
-#                 print(f"Error fetching YouTube videos for {dish_name}: {e}")
+        if match_percentage >= threshold:
+            item["match_percentage"] = round(match_percentage, 2)
+            item["matched_ingredients"] = list(matched)
+            item["missing_ingredients"] = list(recipe_set - matched)
 
-#         item["similar_youtube_videos"] = similar_videos
-#         item["scraped_youtube_link"] = similar_videos[0]["video_url"] if similar_videos else ""
+            filtered.append(item)
 
-#     return parent_names, recipes
+    # ✅ Sort best matches first
+    filtered.sort(key=lambda x: x["match_percentage"], reverse=True)
+
+    return filtered
 
 def fetch_recipes_by_filter(recipe_type: str, preparation_time: int):
     """
@@ -447,7 +406,7 @@ async def find_recipe_using_query(user_query):
 import asyncio
 from tools.youtube_service import YouTubeService
 
-async def find_recipe_by_ingredients(user_ingredients):
+async def find_recipe_by_ingredients(user_ingredients, recipe_type=None, preparation_time=None):
     """
     Finds the best matching recipes based on provided ingredients using Pinecone asynchronously,
     and fetches similar YouTube videos from India Food Network channel.

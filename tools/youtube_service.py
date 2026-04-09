@@ -19,7 +19,7 @@ class YouTubeService:
         Args:
             api_key: YouTube Data API v3 key. If None, will try to get from environment
         """
-        api_key="AIzaSyAZudWt-i92ArrTQfdj_SA6Tmd_cUAKwlY"
+        api_key="AIzaSyAYCO5rrPanqvpoH7IZ-Cob0DxzFjtMDUk"
         self.api_key = api_key or os.getenv('YOUTUBE_API_KEY')
         print(f"Initializing YouTube service with API key: { os.getenv('YOUTUBE_API_KEY')}")
         if not self.api_key:
