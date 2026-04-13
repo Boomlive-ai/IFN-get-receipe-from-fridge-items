@@ -276,7 +276,7 @@ def filter_recipes_by_ingredients(recipes, user_ingredients, threshold=50):
 
     return filtered
 
-def fetch_recipes_by_filter(recipe_type: str, preparation_time: int):
+def fetch_recipes_by_filter(recipe_type: str, preparation_time: int, start_index: int = 0, count: int = 10):
     """
     Fetches recipes from India Food Network API filtered by recipe_type and preparation_time.
     YouTube link is fetched via YouTubeService (same as find_recipe_using_query).
@@ -291,8 +291,8 @@ def fetch_recipes_by_filter(recipe_type: str, preparation_time: int):
         "content_type": "recipe",
         "param_name": ["recipe_type", "preparation_time"],
         "param_value": [recipe_type, str(preparation_time)],
-        "startIndex": 0,
-        "count": 10
+        "startIndex": start_index,
+        "count": count
     }
 
     response = requests.get(api_url, headers=headers, params=params)

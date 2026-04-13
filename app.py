@@ -1402,8 +1402,26 @@ def recipe_by_api():
         recipe_type       - e.g. 'breakfast', 'lunch', 'dinner'  [Required]
         preparation_time  - integer in minutes, e.g. 15           [Required]
     """
+    # recipe_type = request.args.get('recipe_type', '').strip()
+    # preparation_time = request.args.get('preparation_time', '').strip()
+
+    # if not recipe_type:
+    #     return jsonify({"error": "recipe_type is required"}), 400
+    # if not preparation_time:
+    #     return jsonify({"error": "preparation_time is required"}), 400
+
+    # try:
+    #     preparation_time = int(preparation_time)
+    # except ValueError:
+    #     return jsonify({"error": "preparation_time must be an integer"}), 400
+
+    # try:
+    #     parent_names, raw_recipes = fetch_recipes_by_filter(recipe_type, preparation_time)
+    
     recipe_type = request.args.get('recipe_type', '').strip()
     preparation_time = request.args.get('preparation_time', '').strip()
+    start_index = request.args.get('startIndex', '0').strip()
+    count = request.args.get('count', '10').strip()
 
     if not recipe_type:
         return jsonify({"error": "recipe_type is required"}), 400
@@ -1416,7 +1434,21 @@ def recipe_by_api():
         return jsonify({"error": "preparation_time must be an integer"}), 400
 
     try:
-        parent_names, raw_recipes = fetch_recipes_by_filter(recipe_type, preparation_time)
+        start_index = int(start_index)
+        if start_index < 0:
+            return jsonify({"error": "startIndex must be a non-negative integer"}), 400
+    except ValueError:
+        return jsonify({"error": "startIndex must be an integer"}), 400
+
+    try:
+        count = int(count)
+        if count < 1:
+            return jsonify({"error": "count must be a positive integer"}), 400
+    except ValueError:
+        return jsonify({"error": "count must be an integer"}), 400
+
+    try:
+        parent_names, raw_recipes = fetch_recipes_by_filter(recipe_type, preparation_time, start_index, count)
 
         if not raw_recipes:
             return jsonify({"error": "No matching recipes found"}), 404
@@ -1444,8 +1476,10 @@ def recipe_by_api():
         return jsonify({
             "recipe_type":        recipe_type,
             "preparation_time":   preparation_time,
+            "start_index":        start_index,
+            "count":              count,
             "recipes_found":      len(recipes),
-            "parent_names":       parent_names,   # the extracted parent_name list
+            "parent_names":       parent_names,
             "recipes":            recipes
         }), 200
 
