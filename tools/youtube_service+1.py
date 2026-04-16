@@ -4,8 +4,6 @@ from typing import List, Dict, Optional
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import logging
-import psycopg2
-import psycopg2.extras
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -131,40 +129,6 @@ class YouTubeService:
             logger.error(f"Error searching videos: {e}")
             return []
     
-    def parse_ingredients(self, description: str) -> List[str]:
-        """
-        Parse ingredients from a video description.
-        Looks for an 'Ingredients' section and extracts lines until
-        the next section header or end of description.
-
-        Args:
-            description: Full video description text
-
-        Returns:
-            List of ingredient strings
-        """
-        ingredients = []
-        lines = description.split("\n")
-        in_ingredients_section = False
-
-        for line in lines:
-            stripped = line.strip()
-
-            # Detect start of ingredients section
-            if stripped.lower().startswith("ingredient"):
-                in_ingredients_section = True
-                continue  # Skip the header line itself
-
-            if in_ingredients_section:
-                # Stop if we hit a new section header (e.g., "Method:", "Instructions:", empty + caps)
-                if not stripped:
-                    continue  # Skip blank lines inside the section
-                if stripped.endswith(":") and len(stripped.split()) <= 3:
-                    break  # New section found, stop collecting
-                ingredients.append(stripped)
-
-        return ingredients
-    
     def get_uploads_playlist_id(self):
         response = self.youtube.channels().list(
             part="contentDetails",
@@ -172,189 +136,58 @@ class YouTubeService:
         ).execute()
 
         return response["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
-    
-    def save_to_postgres(self, videos: List[Dict]) -> int:
+        
+    def fetch_all_channel_videos_with_details(self, max_results: int = 50, output_file: str = "channel_videos.json") -> List[Dict]:
         """
-        Insert video data into the flask_yt_details PostgreSQL table.
-        Skips duplicates based on url (ON CONFLICT DO NOTHING).
+        Fetch all videos from the channel with title, description, ingredients (parsed), and YouTube URL.
+        Saves the result into a JSON file.
 
         Args:
-            videos: List of video dicts with title, description, url, ingredients
+            max_results: Number of videos to fetch (max 50 per API call)
+            output_file: JSON file name to save data
 
         Returns:
-            Number of rows inserted
+            List of video data
         """
-        DB_URL = "postgres://postgres:gMAJTwTSA9eeuQ56TfxeogJWOaekm5q4WbkZ02sFB8tHIynd3CGUsMgZvXeo9ONM@72.62.197.102:5898/recipe_finder"
-
-        inserted = 0
         try:
-            conn = psycopg2.connect(DB_URL)
-            cursor = conn.cursor()
-
-            for video in videos:
-                cursor.execute(
-                    """
-                    INSERT INTO flask_yt_details (title, description, url, ingredients)
-                    VALUES (%s, %s, %s, %s)
-                    """,
-                    (
-                        video.get("title"),
-                        video.get("description"),
-                        video.get("youtube_url"),
-                        json.dumps(video.get("ingredients", []))
-                    )
-                )
-                if cursor.rowcount > 0:
-                    inserted += 1
-
-            conn.commit()
-            cursor.close()
-            conn.close()
-            logger.info(f"Inserted {inserted} new videos into flask_yt_details")
-
-        except Exception as e:
-            logger.error(f"PostgreSQL error: {e}")
-            raise
-
-        return inserted
-    
-    def fetch_all_channel_videos(self):
-        playlist_id = self.get_uploads_playlist_id()
-
-        videos = []
-        next_page_token = None
-
-        while True:
-            response = self.youtube.playlistItems().list(
-                part="snippet",
-                playlistId=playlist_id,
-                maxResults=50,
-                pageToken=next_page_token
-            ).execute()
-
-            for item in response.get("items", []):
-                video_id = item["snippet"]["resourceId"]["videoId"]
-
-                videos.append({
-                    "video_id": video_id,
-                    "title": item["snippet"]["title"],
-                    "description": item["snippet"]["description"],
-                    "published_at": item["snippet"]["publishedAt"],
-                    "thumbnail_url": item["snippet"]["thumbnails"]["high"]["url"],
-                    "youtube_url": f"https://www.youtube.com/watch?v={video_id}"
-                })
-
-            next_page_token = response.get("nextPageToken")
-
-            if not next_page_token:
-                break
-
-        return videos
-
-    # def fetch_all_channel_videos_with_details(self, max_results: int = 50, output_file: str = "channel_videos.json") -> List[Dict]:
-    #     """
-    #     Fetch all videos from the channel with title, full description,
-    #     ingredients (parsed from full description), and YouTube URL.
-        
-    #     Uses get_video_details() after search to retrieve the FULL description,
-    #     since search snippets are truncated and don't contain ingredients.
-
-    #     Args:
-    #         max_results: Number of videos to fetch (max 50 per API call)
-    #         output_file: JSON file name to save data
-
-    #     Returns:
-    #         List of video data
-    #     """
-    #     try:
-    #         # Step 1: Search to get video IDs and basic info
-    #         # videos = self.fetch_all_channel_videos(max_results=max_results)
-    #         videos = self.fetch_all_channel_videos()
-
-
-    #         if not videos:
-    #             logger.warning("No videos returned from search.")
-    #             return []
-
-    #         # Step 2: Extract video IDs and fetch FULL details (full description)
-    #         video_ids = [v["video_id"] for v in videos]
-    #         detailed_videos = self.get_video_details(video_ids)
-
-    #         # Build a lookup map: video_id -> full details
-    #         details_map = {v["video_id"]: v for v in detailed_videos}
-
-    #         final_data = []
-
-    #         for video in videos:
-    #             video_id = video["video_id"]
-
-    #             # Use full details if available, fallback to search snippet
-    #             full_detail = details_map.get(video_id, {})
-    #             full_description = full_detail.get("description") or video.get("description", "")
-
-    #             # Parse ingredients from the complete description
-    #             ingredients = self.parse_ingredients(full_description)
-
-    #             video_data = {
-    #                 "title": video.get("title"),
-    #                 "description": full_description,
-    #                 "ingredients": ingredients,
-    #                 "youtube_url": video.get("youtube_url")
-    #             }
-
-    #             final_data.append(video_data)
-
-    #         # Step 3: Save to JSON
-    #         with open(output_file, "w", encoding="utf-8") as f:
-    #             json.dump(final_data, f, indent=2, ensure_ascii=False)
-
-    #         logger.info(f"Saved {len(final_data)} videos to {output_file}")
-
-    #         return final_data
-
-    #     except Exception as e:
-    #         logger.error(f"Error fetching channel videos: {e}")
-    #         return []
-    
-    def fetch_all_channel_videos_with_details(self) -> List[Dict]:
-        try:
-            # Step 1: Fetch all videos from uploads playlist
-            videos = self.fetch_all_channel_videos()   # ← no arguments
-
-            logger.info(f"Fetched {len(videos)} videos from playlist")  # ← add this to verify
-
-            if not videos:
-                logger.warning("No videos returned from channel.")
-                return []
-
-            # Step 2: Fetch FULL details in batches of 50
-            video_ids = [v["video_id"] for v in videos]
-            detailed_videos = self.get_video_details(video_ids)
-            details_map = {v["video_id"]: v for v in detailed_videos}
+            # Step 1: Get videos from channel
+            videos = self.search_videos(query="", max_results=max_results, order="date")
 
             final_data = []
+
             for video in videos:
-                video_id = video["video_id"]
-                full_detail = details_map.get(video_id, {})
-                full_description = full_detail.get("description") or video.get("description", "")
-                ingredients = self.parse_ingredients(full_description)
+                description = video.get("description", "")
 
-                final_data.append({
+                # --- Simple ingredient extraction logic ---
+                ingredients = []
+                if "ingredient" in description.lower():
+                    lines = description.split("\n")
+                    for line in lines:
+                        if "ingredient" in line.lower():
+                            continue
+                        if line.strip():
+                            ingredients.append(line.strip())
+
+                video_data = {
                     "title": video.get("title"),
-                    "description": full_description,
+                    "description": description,
                     "ingredients": ingredients,
-                    "youtube_url": video.get("youtube_url")  # ← correct key
-                })
+                    "youtube_url": video.get("video_url")
+                }
 
-            # Step 3: Push to PostgreSQL
-            inserted = self.save_to_postgres(final_data)
-            logger.info(f"Done. {inserted} new rows inserted out of {len(final_data)} videos.")
+                final_data.append(video_data)
+
+            # Step 2: Save to JSON
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump(final_data, f, indent=2, ensure_ascii=False)
+
+            logger.info(f"Saved {len(final_data)} videos to {output_file}")
 
             return final_data
 
         except Exception as e:
             logger.error(f"Error fetching channel videos: {e}")
-            raise   # ← change from `return []` to `raise` so you can SEE the actual error
+            return []
     
     def get_video_details(self, video_ids: List[str]) -> List[Dict]:
         """

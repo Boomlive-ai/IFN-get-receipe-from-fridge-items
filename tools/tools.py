@@ -276,10 +276,77 @@ def filter_recipes_by_ingredients(recipes, user_ingredients, threshold=50):
 
     return filtered
 
+def fetch_youtube_urls_from_db(dish_names):
+    """
+    Fetches YouTube URLs from PostgreSQL database for given dish names.
+    Returns a dict mapping dish_name -> list of youtube_url rows.
+    """
+    import psycopg2
+    DB_URL = "postgres://postgres:gMAJTwTSA9eeuQ56TfxeogJWOaekm5q4WbkZ02sFB8tHIynd3CGUsMgZvXeo9ONM@72.62.197.102:5898/recipe_finder"
+
+    result = {}
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        for name in dish_names:
+            cur.execute(
+                "SELECT url FROM flask_yt_details WHERE title ILIKE %s",
+                (f"%{name}%",)
+            )
+            rows = cur.fetchall()
+            result[name] = [row[0] for row in rows if row[0]]
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"DB error fetching YouTube URLs: {e}")
+
+    return result
+
+
+# def fetch_recipes_by_filter(recipe_type: str, preparation_time: int, start_index: int = 0, count: int = 10):
+#     """
+#     Fetches recipes from India Food Network API filtered by recipe_type and preparation_time.
+#     YouTube link is fetched from PostgreSQL database instead of YouTube API.
+#     """
+#     api_url = "https://www.indiafoodnetwork.in/dev/h-api/contentFilter"
+#     headers = {
+#         "Accept": "*/*",
+#         "Content-Type": "application/json",
+#         "s-id": "Wp9Bmsyz2ZmDkNqNTPC69SLS9spXooIpjXUPW3tiqIMO5EZ8PUBwHLtavO8iPCa1"
+#     }
+#     params = {
+#         "content_type": "recipe",
+#         "param_name": ["recipe_type", "preparation_time"],
+#         "param_value": [recipe_type, str(preparation_time)],
+#         "startIndex": start_index,
+#         "count": count
+#     }
+
+#     response = requests.get(api_url, headers=headers, params=params)
+#     response.raise_for_status()
+#     data = response.json()
+
+#     recipes = data.get("news", [])
+#     parent_names = [item.get("parent_name") for item in recipes if item.get("parent_name")]
+
+#     # Collect all dish names and fetch YouTube URLs from DB in one batch
+#     dish_names = [item.get("heading", "") for item in recipes if item.get("heading")]
+#     yt_urls_map = fetch_youtube_urls_from_db(dish_names)
+#     print("YouTube URLs fetched from DB:", yt_urls_map)
+
+#     for item in recipes:
+#         dish_name = item.get("heading", "")
+#         urls = yt_urls_map.get(dish_name, [])
+
+#         item["similar_youtube_videos"] = [{"video_url": url} for url in urls]
+#         item["scraped_youtube_link"] = urls[0] if urls else ""
+
+#     return parent_names, recipes
+
 def fetch_recipes_by_filter(recipe_type: str, preparation_time: int, start_index: int = 0, count: int = 10):
     """
     Fetches recipes from India Food Network API filtered by recipe_type and preparation_time.
-    YouTube link is fetched via YouTubeService (same as find_recipe_using_query).
+    YouTube link is fetched from PostgreSQL database instead of YouTube API.
     """
     api_url = "https://www.indiafoodnetwork.in/dev/h-api/contentFilter"
     headers = {
@@ -302,31 +369,276 @@ def fetch_recipes_by_filter(recipe_type: str, preparation_time: int, start_index
     recipes = data.get("news", [])
     parent_names = [item.get("parent_name") for item in recipes if item.get("parent_name")]
 
-    # Initialize YouTubeService ONCE — channel_id is now hardcoded, no quota wasted
-    try:
-        yt_service = YouTubeService()
-    except ValueError as e:
-        print(f"YouTubeService error: {e}")
-        yt_service = None
+    # Step 1: Try fetching YouTube URLs from DB first
+    dish_names = [item.get("heading", "") for item in recipes if item.get("heading")]
+    yt_urls_map = fetch_youtube_urls_from_db(dish_names)
+    print("YouTube URLs fetched from DB:", yt_urls_map)
+
+    # Step 2: Find dish names that got no results from DB
+    missing_dishes = [name for name in dish_names if not yt_urls_map.get(name)]
+
+    # Step 3: Fallback to YouTubeService only for missing dishes
+    yt_service = None
+    if missing_dishes:
+        print(f"Falling back to YouTubeService for {len(missing_dishes)} dishes: {missing_dishes}")
+        try:
+            yt_service = YouTubeService()
+        except ValueError as e:
+            print(f"YouTubeService error: {e}")
 
     for item in recipes:
         dish_name = item.get("heading", "")
-        similar_videos = []
+        urls = yt_urls_map.get(dish_name, [])
 
-        if yt_service and dish_name:
-            try:
-                similar_videos = yt_service.search_recipe_videos(
-                    recipe_name=dish_name,
-                    max_results=3  # 3 is enough, saves quota
-                )
-            except Exception as e:
-                print(f"Error fetching YouTube videos for {dish_name}: {e}")
+        if urls:
+            # DB had results — use them
+            item["similar_youtube_videos"] = [{"video_url": url} for url in urls]
+            item["scraped_youtube_link"] = urls[0]
+        else:
+            # Fallback to YouTube API for this dish
+            similar_videos = []
+            if yt_service and dish_name:
+                try:
+                    similar_videos = yt_service.search_recipe_videos(
+                        recipe_name=dish_name,
+                        max_results=3
+                    )
+                except Exception as e:
+                    print(f"Error fetching YouTube videos for {dish_name}: {e}")
 
-        item["similar_youtube_videos"] = similar_videos
-        # video_url is the correct key from YouTubeService.search_recipe_videos()
-        item["scraped_youtube_link"] = similar_videos[0]["video_url"] if similar_videos else ""
+            item["similar_youtube_videos"] = similar_videos
+            item["scraped_youtube_link"] = similar_videos[0]["video_url"] if similar_videos else ""
 
     return parent_names, recipes
+
+
+def _is_non_veg_recipe(dish_name: str, ingredients: list) -> bool:
+    """Check if a recipe contains non-vegetarian ingredients based on dish name and ingredient list."""
+    non_veg_keywords = [
+        "chicken", "mutton", "lamb", "goat", "pork", "beef", "meat", "keema",
+        "fish", "prawn", "shrimp", "crab", "lobster", "squid", "octopus", "clam",
+        "salmon", "tuna", "surmai", "pomfret", "rawas", "bangda", "rohu", "hilsa",
+        "egg", "anda", "omelette", "omelet",
+        "bacon", "ham", "sausage", "salami", "pepperoni",
+        "murgh", "gosht", "jhinga", "machhi", "machi", "machli",
+        "tikka chicken", "butter chicken", "tandoori chicken",
+        "rogan josh", "nihari", "haleem", "seekh kabab","egg", "eggs",
+    ]
+    # Check dish name
+    name_lower = dish_name.lower()
+    for keyword in non_veg_keywords:
+        if keyword in name_lower:
+            return True
+    # Check ingredients
+    for ing in ingredients:
+        ing_lower = ing.lower()
+        for keyword in non_veg_keywords:
+            if keyword in ing_lower:
+                return True
+    return False
+
+
+def _is_non_vegan_recipe(dish_name: str, ingredients: list) -> bool:
+    """Check if a recipe contains non-vegan ingredients."""
+    non_vegan_keywords = [
+        # All non-veg keywords
+        "chicken", "mutton", "lamb", "goat", "pork", "beef", "meat", "keema",
+        "fish", "prawn", "shrimp", "crab", "lobster", "squid", "egg", "anda",
+        "murgh", "gosht", "jhinga", "machhi", "machi", "machli",
+        # Dairy and animal products
+        "milk", "cream", "butter", "ghee", "paneer", "cheese", "curd", "yogurt",
+        "yoghurt", "dahi", "khoya", "mawa", "malai", "whey",
+        "honey", "gelatin",
+    ]
+    name_lower = dish_name.lower()
+    for keyword in non_vegan_keywords:
+        if keyword in name_lower:
+            return True
+    for ing in ingredients:
+        ing_lower = ing.lower()
+        for keyword in non_vegan_keywords:
+            if keyword in ing_lower:
+                return True
+    return False
+
+
+def _contains_disliked(dish_name: str, ingredients: list, disliked: list) -> bool:
+    """Check if a recipe contains any disliked ingredients."""
+    name_lower = dish_name.lower()
+    for d in disliked:
+        d_lower = d.lower()
+        if d_lower in name_lower:
+            return True
+        for ing in ingredients:
+            if d_lower in ing.lower():
+                return True
+    return False
+
+
+def fetch_recipe_by_filter_for_values(
+    recipe_type: str,
+    preparation_time: int,
+    food_type: str = "",
+    cuisines: list = None,
+    disliked: list = None,
+    mood: str = "",
+    start_index: int = 0,
+    count: int = 10
+):
+    """
+    Fetches recipes from India Food Network API filtered by recipe_type and preparation_time,
+    then filters results based on foodType (veg/non-veg), disliked ingredients, and cuisines using
+    programmatic checks + OpenAI for cuisine/mood matching.
+    """
+    api_url = "https://www.indiafoodnetwork.in/dev/h-api/contentFilter"
+    headers = {
+        "Accept": "*/*",
+        "Content-Type": "application/json",
+        "s-id": "Wp9Bmsyz2ZmDkNqNTPC69SLS9spXooIpjXUPW3tiqIMO5EZ8PUBwHLtavO8iPCa1"
+    }
+    params = {
+        "content_type": "recipe",
+        "param_name": ["recipe_type", "preparation_time"],
+        "param_value": [recipe_type, str(preparation_time)],
+        "startIndex": start_index,
+        "count": count
+    }
+
+    print(f"[API REQUEST] Calling IFN API with params: recipe_type={recipe_type}, preparation_time={preparation_time}, startIndex={start_index}, count={count}")
+    response = requests.get(api_url, headers=headers, params=params)
+    response.raise_for_status()
+    data = response.json()
+
+    recipes = data.get("news", [])
+    total_from_api = len(recipes)
+    print(f"[API RESPONSE] Total recipes returned from IFN API: {total_from_api} (requested count={count})")
+    for i, r in enumerate(recipes):
+        print(f"  [{i}] {r.get('heading', 'N/A')}")
+
+    # ============ STEP 1: Hard programmatic filter for foodType and disliked ============
+    food_type_lower = food_type.lower().strip() if food_type else ""
+    filtered_recipes = []
+
+    for item in recipes:
+        dish_name = item.get("heading", "")
+        ingredients = [i.get("heading", "") for i in item.get("ingredient", [])]
+
+        # Filter by foodType
+        if food_type_lower in ["vegetarian", "veg"]:
+            if _is_non_veg_recipe(dish_name, ingredients):
+                print(f"[FILTERED OUT - non-veg] {dish_name}")
+                continue
+        elif food_type_lower == "vegan":
+            if _is_non_vegan_recipe(dish_name, ingredients):
+                print(f"[FILTERED OUT - non-vegan] {dish_name}")
+                continue
+
+        # Filter by disliked ingredients
+        if disliked and _contains_disliked(dish_name, ingredients, disliked):
+            print(f"[FILTERED OUT - disliked] {dish_name}")
+            continue
+
+        filtered_recipes.append(item)
+
+    print(f"[FILTER] {len(recipes)} recipes -> {len(filtered_recipes)} after foodType/disliked filter")
+    recipes = filtered_recipes
+
+    # ============ STEP 2: OpenAI filter for cuisines and mood ============
+    if recipes and (cuisines or mood):
+        recipe_summaries = []
+        for idx, item in enumerate(recipes):
+            ingredients = [i.get("heading", "") for i in item.get("ingredient", [])]
+            recipe_summaries.append({
+                "index": idx,
+                "name": item.get("heading", ""),
+                "ingredients": ingredients,
+                "parent_name": item.get("parent_name", "")
+            })
+
+        filter_prompt = f"""You are an Indian food expert. I have a list of recipes that are already filtered for dietary restrictions. Now I need you to rank and filter them based on cuisine and mood preferences.
+
+User preferences:
+- Preferred Cuisines: {', '.join(cuisines) if cuisines else 'any'}
+- Mood: {mood if mood else 'any'}
+
+Rules:
+1. If cuisines are specified, ONLY keep recipes that belong to those cuisines. For example:
+   - "north indian" includes dishes like dal makhani, paneer butter masala, chole, rajma, aloo gobi, paratha, naan dishes, etc.
+   - "south indian" includes dishes like dosa, idli, sambar, rasam, appam, uttapam, etc.
+   - "chinese/indo-chinese" includes manchurian, fried rice, noodles, etc.
+2. If mood is specified, prefer recipes matching that mood:
+   - "comfort" = rich, hearty, creamy, indulgent dishes
+   - "healthy" = light, nutritious, low-oil dishes
+   - "light" = simple, easy-to-digest dishes
+3. Be strict with cuisine filtering - if a dish clearly does not belong to the specified cuisine, remove it.
+
+Here are the recipes:
+{json.dumps(recipe_summaries, indent=2)}
+
+Return ONLY a JSON array of the indices (from the list above) of recipes that match the cuisine and mood preferences. Example: [0, 2, 5]
+If no recipes match, return an empty array: []
+Return ONLY the JSON array, no explanation."""
+
+        try:
+            sync_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            ai_response = sync_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": filter_prompt}],
+                temperature=0
+            )
+            result_text = ai_response.choices[0].message.content.strip()
+            # Clean markdown code blocks if present
+            if result_text.startswith("```"):
+                result_text = result_text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+            filtered_indices = json.loads(result_text)
+            if isinstance(filtered_indices, list) and len(filtered_indices) > 0:
+                recipes = [recipes[i] for i in filtered_indices if i < len(recipes)]
+                print(f"[FILTER] OpenAI cuisine/mood filter: {len(filtered_indices)} out of {len(recipe_summaries)} kept")
+            else:
+                print("[FILTER] OpenAI returned empty or invalid, keeping all recipes after programmatic filter")
+        except Exception as e:
+            print(f"[FILTER] OpenAI filtering error: {e}, keeping all recipes after programmatic filter")
+
+    parent_names = [item.get("parent_name") for item in recipes if item.get("parent_name")]
+
+    # Fetch YouTube URLs
+    dish_names = [item.get("heading", "") for item in recipes if item.get("heading")]
+    yt_urls_map = fetch_youtube_urls_from_db(dish_names)
+    print("YouTube URLs fetched from DB:", yt_urls_map)
+
+    missing_dishes = [name for name in dish_names if not yt_urls_map.get(name)]
+
+    yt_service = None
+    if missing_dishes:
+        print(f"Falling back to YouTubeService for {len(missing_dishes)} dishes: {missing_dishes}")
+        try:
+            yt_service = YouTubeService()
+        except ValueError as e:
+            print(f"YouTubeService error: {e}")
+
+    for item in recipes:
+        dish_name = item.get("heading", "")
+        urls = yt_urls_map.get(dish_name, [])
+
+        if urls:
+            item["similar_youtube_videos"] = [{"video_url": url} for url in urls]
+            item["scraped_youtube_link"] = urls[0]
+        else:
+            similar_videos = []
+            if yt_service and dish_name:
+                try:
+                    similar_videos = yt_service.search_recipe_videos(
+                        recipe_name=dish_name,
+                        max_results=3
+                    )
+                except Exception as e:
+                    print(f"Error fetching YouTube videos for {dish_name}: {e}")
+
+            item["similar_youtube_videos"] = similar_videos
+            item["scraped_youtube_link"] = similar_videos[0]["video_url"] if similar_videos else ""
+
+    return parent_names, recipes
+
 
 async def find_recipe_using_query(user_query):
     """
