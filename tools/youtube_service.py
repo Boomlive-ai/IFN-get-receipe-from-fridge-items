@@ -21,8 +21,8 @@ class YouTubeService:
         Args:
             api_key: YouTube Data API v3 key. If None, will try to get from environment
         """
-        api_key="AIzaSyAYCO5rrPanqvpoH7IZ-Cob0DxzFjtMDUk" 
-        # api_key="AIzaSyAZudWt-i92ArrTQfdj_SA6Tmd_cUAKwlY"
+        # api_key="AIzaSyAYCO5rrPanqvpoH7IZ-Cob0DxzFjtMDUk" 
+        api_key="AIzaSyAZudWt-i92ArrTQfdj_SA6Tmd_cUAKwlY"
         self.api_key = api_key or os.getenv('YOUTUBE_API_KEY')
         print(f"Initializing YouTube service with API key: { os.getenv('YOUTUBE_API_KEY')}")
         if not self.api_key:
@@ -191,17 +191,32 @@ class YouTubeService:
             conn = psycopg2.connect(DB_URL)
             cursor = conn.cursor()
 
+            # for video in videos:
+            #     cursor.execute(
+            #         """
+            #         INSERT INTO flask_yt_details (title, description, url, ingredients)
+            #         VALUES (%s, %s, %s, %s)
+            #         """,
+            #         (
+            #             video.get("title"),
+            #             video.get("description"),
+            #             video.get("youtube_url"),
+            #             json.dumps(video.get("ingredients", []))
+            #         )
+            #     )
+            
             for video in videos:
                 cursor.execute(
                     """
-                    INSERT INTO flask_yt_details (title, description, url, ingredients)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO flask_yt_details (title, description, url, ingredients, published_at)
+                    VALUES (%s, %s, %s, %s, %s)
                     """,
                     (
                         video.get("title"),
                         video.get("description"),
                         video.get("youtube_url"),
-                        json.dumps(video.get("ingredients", []))
+                        json.dumps(video.get("ingredients", [])),
+                        video.get("published_date")
                     )
                 )
                 if cursor.rowcount > 0:
@@ -339,11 +354,19 @@ class YouTubeService:
                 full_description = full_detail.get("description") or video.get("description", "")
                 ingredients = self.parse_ingredients(full_description)
 
+                # final_data.append({
+                #     "title": video.get("title"),
+                #     "description": full_description,
+                #     "ingredients": ingredients,
+                #     "youtube_url": video.get("youtube_url")  # ← correct key
+                # })
+                
                 final_data.append({
                     "title": video.get("title"),
                     "description": full_description,
                     "ingredients": ingredients,
-                    "youtube_url": video.get("youtube_url")  # ← correct key
+                    "youtube_url": video.get("youtube_url"),
+                    "published_date": full_detail.get("published_at") or video.get("published_at")
                 })
 
             # Step 3: Push to PostgreSQL
