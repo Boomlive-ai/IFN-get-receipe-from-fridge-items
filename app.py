@@ -976,22 +976,33 @@ def recipe_for_all():
                 "error": f"Failed to fetch recipes for {meal_type}: {str(e)}"
             }), 500
 
-        # Build the name list from raw_recipes. Prefer parent_name; if it's
+        # Build the list from raw_recipes. Prefer parent_name; if it's
         # missing/empty on an item, fall back to heading (the dish name).
-        # The upstream API often doesn't return parent_name for every recipe,
-        # which was causing the response lists to be empty.
+        # For each unique meal name, also attach thumbImage, recipe_url,
+        # and YouTube Link from the same upstream item.
         seen = set()
-        unique_names = []
+        unique_meals = []
         for item in (raw_recipes or []):
             name = (item.get("parent_name") or "").strip()
             if not name:
                 name = (item.get("heading") or "").strip()
-            if name and name not in seen:
-                seen.add(name)
-                unique_names.append(name)
+            if not name or name in seen:
+                continue
+            seen.add(name)
 
-        print(f"[RESULT] {meal_type}: {len(unique_names)} names -> {unique_names}")
-        response_payload[f"{meal_type}_names"] = unique_names
+            # Build full recipe URL (upstream returns a relative path)
+            relative_url = (item.get("url") or "").strip()
+            recipe_url = f"https://www.indiafoodnetwork.in{relative_url}" if relative_url else ""
+
+            unique_meals.append({
+                "name":         name,
+                "thumbImage":   item.get("thumbImage", "") or "",
+                "recipe_url":   recipe_url,
+                "YouTube Link": item.get("scraped_youtube_link", "") or "",
+            })
+
+        print(f"[RESULT] {meal_type}: {len(unique_meals)} meals")
+        response_payload[f"{meal_type}_names"] = unique_meals
 
     return jsonify({
         "food_type":       food_type,
