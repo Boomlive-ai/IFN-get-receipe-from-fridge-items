@@ -12,11 +12,11 @@ from openai import OpenAI
 # Initialize Pinecone
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 from dotenv import load_dotenv
+# Load environment variables from .env file
+load_dotenv()
 from tools.youtube_service import YouTubeService
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 client = OpenAI(api_key=OPENAI_API_KEY)
-# Load environment variables from .env file
-load_dotenv()
 # Initialize Pinecone
 pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY")
 )
@@ -172,9 +172,9 @@ def fetch_recipe_data():
     """
     Calls the API and fetches the recipe data.
     """
-    api_url = "https://indiafoodnetwork.in/dev/h-api/content"
-    headers = {'accept': '*/*', 's-id': 'zAJPIArp1GpBnYPBoTgkruBzSRfbriwHr3uKdl4sSZwufsbhpg89F1wDqvpD6NoD'}
-    
+    api_url = os.getenv("IFN_CONTENT_API_URL", "https://indiafoodnetwork.in/dev/h-api/content")
+    headers = {'accept': '*/*', 's-id': os.getenv("FETCH_RECIPE_S_ID")}
+
     response = requests.get(api_url, headers=headers)
     
     if response.status_code == 200:
@@ -282,7 +282,7 @@ def fetch_youtube_urls_from_db(dish_names):
     Returns a dict mapping dish_name -> list of youtube_url rows.
     """
     import psycopg2
-    DB_URL = "postgres://postgres:gMAJTwTSA9eeuQ56TfxeogJWOaekm5q4WbkZ02sFB8tHIynd3CGUsMgZvXeo9ONM@72.62.197.102:5898/recipe_finder"
+    DB_URL = os.getenv("DB_URL")
 
     result = {}
     try:
@@ -303,56 +303,17 @@ def fetch_youtube_urls_from_db(dish_names):
     return result
 
 
-# def fetch_recipes_by_filter(recipe_type: str, preparation_time: int, start_index: int = 0, count: int = 10):
-#     """
-#     Fetches recipes from India Food Network API filtered by recipe_type and preparation_time.
-#     YouTube link is fetched from PostgreSQL database instead of YouTube API.
-#     """
-#     api_url = "https://www.indiafoodnetwork.in/dev/h-api/contentFilter"
-#     headers = {
-#         "Accept": "*/*",
-#         "Content-Type": "application/json",
-#         "s-id": "Wp9Bmsyz2ZmDkNqNTPC69SLS9spXooIpjXUPW3tiqIMO5EZ8PUBwHLtavO8iPCa1"
-#     }
-#     params = {
-#         "content_type": "recipe",
-#         "param_name": ["recipe_type", "preparation_time"],
-#         "param_value": [recipe_type, str(preparation_time)],
-#         "startIndex": start_index,
-#         "count": count
-#     }
-
-#     response = requests.get(api_url, headers=headers, params=params)
-#     response.raise_for_status()
-#     data = response.json()
-
-#     recipes = data.get("news", [])
-#     parent_names = [item.get("parent_name") for item in recipes if item.get("parent_name")]
-
-#     # Collect all dish names and fetch YouTube URLs from DB in one batch
-#     dish_names = [item.get("heading", "") for item in recipes if item.get("heading")]
-#     yt_urls_map = fetch_youtube_urls_from_db(dish_names)
-#     print("YouTube URLs fetched from DB:", yt_urls_map)
-
-#     for item in recipes:
-#         dish_name = item.get("heading", "")
-#         urls = yt_urls_map.get(dish_name, [])
-
-#         item["similar_youtube_videos"] = [{"video_url": url} for url in urls]
-#         item["scraped_youtube_link"] = urls[0] if urls else ""
-
-#     return parent_names, recipes
 
 def fetch_recipes_by_filter(recipe_type: str, preparation_time: int, start_index: int = 0, count: int = 10):
     """
     Fetches recipes from India Food Network API filtered by recipe_type and preparation_time.
     YouTube link is fetched from PostgreSQL database instead of YouTube API.
     """
-    api_url = "https://www.indiafoodnetwork.in/dev/h-api/contentFilter"
+    api_url = os.getenv("IFN_CONTENT_FILTER_API_URL", "https://www.indiafoodnetwork.in/dev/h-api/contentFilter")
     headers = {
         "Accept": "*/*",
         "Content-Type": "application/json",
-        "s-id": "Wp9Bmsyz2ZmDkNqNTPC69SLS9spXooIpjXUPW3tiqIMO5EZ8PUBwHLtavO8iPCa1"
+        "s-id": os.getenv("FETCH_RECIPES_BY_FILTER_S_ID")
     }
     params = {
         "content_type": "recipe",
@@ -490,11 +451,11 @@ def fetch_recipe_by_filter_for_values(
     then filters results based on foodType (veg/non-veg), disliked ingredients, and cuisines using
     programmatic checks + OpenAI for cuisine/mood matching.
     """
-    api_url = "https://www.indiafoodnetwork.in/dev/h-api/contentFilter"
+    api_url = os.getenv("IFN_CONTENT_FILTER_API_URL", "https://www.indiafoodnetwork.in/dev/h-api/contentFilter")
     headers = {
         "Accept": "*/*",
         "Content-Type": "application/json",
-        "s-id": "Wp9Bmsyz2ZmDkNqNTPC69SLS9spXooIpjXUPW3tiqIMO5EZ8PUBwHLtavO8iPCa1"
+        "s-id": os.getenv("FETCH_RECIPES_BY_FILTER_S_ID")
     }
     params = {
         "content_type": "recipe",
@@ -877,10 +838,10 @@ def store_all_recipe_data_in_pinecone():
         print("Current start index:", start_index)
 
         # Construct API URL with the custom range
-        api_url = f'https://indiafoodnetwork.in/dev/h-api/content?startIndex={start_index}&count={count}'
+        api_url = f'{os.getenv("IFN_CONTENT_API_URL", "https://indiafoodnetwork.in/dev/h-api/content")}?startIndex={start_index}&count={count}'
         headers = {
             "accept": "*/*",
-            "s-id": "zAJPIArp1GpBnYPBoTgkruBzSRfbriwHr3uKdl4sSZwufsbhpg89F1wDqvpD6NoD"
+            "s-id": os.getenv("FETCH_RECIPE_S_ID")
         }
         print(f"Requesting API URL: {api_url}")
 
@@ -1036,7 +997,7 @@ def extract_youtube_videos_from_story(story_html: str) -> List[Dict[str, str]]:
 
 async def get_festival_recipes(
     festivals_data: List[Dict],
-    session_id: str = "Wp9Bmsyz2ZmDkNqNTPC69SLS9spXooIpjXUPW3tiqIMO5EZ8PUBwHLtavO8iPCa1"
+    session_id: Optional[str] = None
 ) -> Dict[str, List[Dict]]:
 
     """
@@ -1044,10 +1005,10 @@ async def get_festival_recipes(
     First tries with searchType=Tags, falls back to plain search if no recipes found.
     """
 
-    base_url = "https://indiafoodnetwork.in/dev/h-api/news"
+    base_url = os.getenv("IFN_NEWS_API_URL", "https://indiafoodnetwork.in/dev/h-api/news")
     headers = {
         "accept": "*/*",
-        "s-id": session_id,
+        "s-id": session_id or os.getenv("FETCH_RECIPES_BY_FILTER_S_ID"),
     }
 
     results = {}
@@ -1108,3 +1069,94 @@ async def get_festival_recipes(
                 results[festival_name] = []
 
     return results
+
+def fetch_recipes_from_db_by_filters(
+    meal_type: str = "",
+    cuisine: str = "",
+    diet: str = "",
+    prep_time_minutes: int = 0,
+    cook_time_minutes: int = 0,
+    servings: int = 0,
+):
+    """
+    Fetch recipe titles from the 'recipes' table in Postgres (DB_URL) using
+    optional filters. Any filter left empty / 0 is ignored.
+
+    Returns a dict grouping titles by meal_type:
+        {
+            "breakfast": [...],
+            "lunch":     [...],
+            "snack":     [...],
+            "dinner":    [...],
+            "dessert":   [...],
+        }
+
+    If `meal_type` is provided (e.g. 'breakfast'), only that bucket is filled.
+    If `meal_type` is empty or 'all', all five buckets are returned.
+    """
+    import psycopg2
+    DB_URL = os.getenv("DB_URL")
+
+    buckets = ["breakfast", "lunch", "snack", "dinner", "dessert"]
+    grouped = {b: [] for b in buckets}
+
+    # Build the WHERE clause dynamically so empty filters are ignored.
+    where_clauses = []
+    params = []
+
+    mt = (meal_type or "").strip().lower()
+    if mt and mt != "all":
+        if mt not in buckets:
+            # Unknown meal_type -> return empty grouped result
+            return grouped
+        where_clauses.append("LOWER(meal_type) = %s")
+        params.append(mt)
+    else:
+        # Only pull rows whose meal_type is one of our known buckets
+        where_clauses.append("LOWER(meal_type) = ANY(%s)")
+        params.append(buckets)
+
+    if cuisine and cuisine.strip():
+        where_clauses.append("LOWER(cuisine) = %s")
+        params.append(cuisine.strip().lower())
+
+    if diet and diet.strip():
+        where_clauses.append("LOWER(diet) = %s")
+        params.append(diet.strip().lower())
+
+    # Treat 0 / None as "no filter" for numeric fields; otherwise use <= so the
+    # user gets recipes that fit *within* their time/servings budget.
+    if prep_time_minutes and int(prep_time_minutes) > 0:
+        where_clauses.append("prep_time_minutes <= %s")
+        params.append(int(prep_time_minutes))
+
+    if cook_time_minutes and int(cook_time_minutes) > 0:
+        where_clauses.append("cook_time_minutes <= %s")
+        params.append(int(cook_time_minutes))
+
+    if servings and int(servings) > 0:
+        where_clauses.append("servings >= %s")
+        params.append(int(servings))
+
+    where_sql = " AND ".join(where_clauses) if where_clauses else "TRUE"
+    query = f"SELECT title, meal_type FROM recipes WHERE {where_sql};"
+
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute(query, params)
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"[DB ERROR] fetch_recipes_from_db_by_filters: {e}")
+        return grouped
+
+    for title, row_meal_type in rows:
+        if not title:
+            continue
+        key = (row_meal_type or "").strip().lower()
+        if key in grouped:
+            grouped[key].append(title)
+
+    return grouped

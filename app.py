@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import requests
 from tools.detect_items import detect_items
 # from tools.tools import fetch_youtube_link, find_recipe_by_ingredients, fetch_recipe_data, store_all_recipe_data_in_pinecone,find_recipe_using_query, get_festival_recipes
-from tools.tools import fetch_youtube_link, find_recipe_by_ingredients, fetch_recipe_data, store_all_recipe_data_in_pinecone, find_recipe_using_query, get_festival_recipes, fetch_recipes_by_filter, fetch_recipe_by_filter_for_values
+from tools.tools import fetch_youtube_link, find_recipe_by_ingredients, fetch_recipe_data, store_all_recipe_data_in_pinecone, find_recipe_using_query, get_festival_recipes, fetch_recipes_by_filter, fetch_recipe_by_filter_for_values, fetch_recipes_from_db_by_filters
 from flask_cors import CORS  # Import CORS
 from utils import get_festivals  # Import the new festival function
 from tools.youtube_service import YouTubeService
@@ -886,134 +886,207 @@ def recipe_by_values():
         return jsonify({"error": f"Failed to fetch recipes: {str(e)}"}), 500
 
 
+# @app.route('/recipe_for_all', methods=['POST'])
+# def recipe_for_all():
+#     """
+#     Find recipes across one or all meal types using AI-based filtering.
+
+#     Request body (JSON):
+#         food_type       - e.g. 'vegetarian', 'non-vegetarian', 'vegan'   [Optional]
+#         house_hold_size - integer                                        [Optional]
+#         meals           - 'breakfast' | 'lunch' | 'snack' | 'dinner' | 'all' [Required]
+#         cooking_time    - integer in minutes (0 = any)                   [Optional]
+#         cuisines        - comma-separated string, e.g. 'north indian,south indian' [Optional]
+#         disliked        - comma-separated string, e.g. 'mushroom,brinjal' [Optional]
+#         cooking_style   - e.g. 'something_new', 'comfort', 'healthy'     [Optional]
+#         subscription    - 'free' or 'pro'                                [Optional]
+
+#     Behaviour:
+#         - If meals == 'all' -> hits the IFN API for each of
+#           [breakfast, lunch, snack, dinner] with count=20 and returns
+#           parent_names grouped per meal type.
+#         - Otherwise -> hits only for the given meal type with count=20.
+#     """
+
+#     try:
+#         data = request.get_json(force=True, silent=True) or {}
+#     except Exception:
+#         return jsonify({"error": "Invalid JSON body"}), 400
+
+#     food_type = str(data.get('food_type', '') or '').strip()
+#     meals = str(data.get('meals', '') or '').strip().lower()
+#     cooking_time_raw = data.get('cooking_time', 0)
+#     cuisines_raw = str(data.get('cuisines', '') or '').strip()
+#     disliked_raw = str(data.get('disliked', '') or '').strip()
+#     cooking_style = str(data.get('cooking_style', '') or '').strip()
+#     subscription = str(data.get('subscription', 'free') or 'free').strip()
+
+#     if not meals:
+#         return jsonify({"error": "meals is required"}), 400
+
+#     # cooking_time -> preparation_time (int)
+#     try:
+#         preparation_time = int(cooking_time_raw) if cooking_time_raw not in ("", None) else 0
+#     except (TypeError, ValueError):
+#         return jsonify({"error": "cooking_time must be an integer"}), 400
+
+#     # Parse comma-separated lists
+#     cuisines = [c.strip() for c in cuisines_raw.split(',') if c.strip()] if cuisines_raw else []
+#     disliked = [d.strip() for d in disliked_raw.split(',') if d.strip()] if disliked_raw else []
+
+#     # Map cooking_style -> mood. 'something_new' is not really a mood, so
+#     # we treat it as "no specific mood" and let the upstream pick variety.
+#     mood = "" if cooking_style.lower() in ("", "something_new") else cooking_style
+
+#     # Decide which meal types to fetch
+#     valid_meals = ["breakfast", "lunch", "snack", "dinner"]
+#     if meals == "all":
+#         meal_types_to_fetch = valid_meals
+#     elif meals in valid_meals:
+#         meal_types_to_fetch = [meals]
+#     else:
+#         return jsonify({
+#             "error": f"Invalid meals value. Must be one of {valid_meals + ['all']}"
+#         }), 400
+
+#     # Per-request fetch count from upstream API
+#     fetch_count = 20
+
+#     response_payload = {}
+
+#     for meal_type in meal_types_to_fetch:
+#         try:
+#             print(f"\n========== Fetching meal_type='{meal_type}' ==========")
+#             parent_names, raw_recipes = fetch_recipe_by_filter_for_values(
+#                 recipe_type=meal_type,
+#                 preparation_time=preparation_time,
+#                 food_type=food_type,
+#                 cuisines=cuisines,
+#                 disliked=disliked,
+#                 mood=mood,
+#                 start_index=0,
+#                 count=fetch_count
+#             )
+#         except requests.exceptions.HTTPError as e:
+#             return jsonify({
+#                 "error": f"Upstream API error while fetching {meal_type}: {str(e)}"
+#             }), 502
+#         except Exception as e:
+#             return jsonify({
+#                 "error": f"Failed to fetch recipes for {meal_type}: {str(e)}"
+#             }), 500
+
+#         # Build the list from raw_recipes. Prefer parent_name; if it's
+#         # missing/empty on an item, fall back to heading (the dish name).
+#         # For each unique meal name, also attach thumbImage, recipe_url,
+#         # and YouTube Link from the same upstream item.
+#         seen = set()
+#         unique_meals = []
+#         for item in (raw_recipes or []):
+#             name = (item.get("parent_name") or "").strip()
+#             if not name:
+#                 name = (item.get("heading") or "").strip()
+#             if not name or name in seen:
+#                 continue
+#             seen.add(name)
+
+#             # Build full recipe URL (upstream returns a relative path)
+#             relative_url = (item.get("url") or "").strip()
+#             recipe_url = f"https://www.indiafoodnetwork.in{relative_url}" if relative_url else ""
+
+#             unique_meals.append({
+#                 "name":         name,
+#                 "thumbImage":   item.get("thumbImage", "") or "",
+#                 "recipe_url":   recipe_url,
+#                 "YouTube Link": item.get("scraped_youtube_link", "") or "",
+#             })
+
+#         print(f"[RESULT] {meal_type}: {len(unique_meals)} meals")
+#         response_payload[f"{meal_type}_names"] = unique_meals
+
+#     return jsonify({
+#         "food_type":       food_type,
+#         "house_hold_size": data.get('house_hold_size'),
+#         "meals":           meals,
+#         "cooking_time":    preparation_time,
+#         "cuisines":        cuisines,
+#         "disliked":        disliked,
+#         "cooking_style":   cooking_style,
+#         "subscription":    subscription,
+#         **response_payload
+#     }), 200
+
+
 @app.route('/recipe_for_all', methods=['POST'])
 def recipe_for_all():
     """
-    Find recipes across one or all meal types using AI-based filtering.
+    Find recipe titles from the local `recipes` table in Postgres (DB_URL),
+    grouped by meal_type: breakfast, lunch, snack, dinner, dessert.
 
-    Request body (JSON):
-        food_type       - e.g. 'vegetarian', 'non-vegetarian', 'vegan'   [Optional]
-        house_hold_size - integer                                        [Optional]
-        meals           - 'breakfast' | 'lunch' | 'snack' | 'dinner' | 'all' [Required]
-        cooking_time    - integer in minutes (0 = any)                   [Optional]
-        cuisines        - comma-separated string, e.g. 'north indian,south indian' [Optional]
-        disliked        - comma-separated string, e.g. 'mushroom,brinjal' [Optional]
-        cooking_style   - e.g. 'something_new', 'comfort', 'healthy'     [Optional]
-        subscription    - 'free' or 'pro'                                [Optional]
-
-    Behaviour:
-        - If meals == 'all' -> hits the IFN API for each of
-          [breakfast, lunch, snack, dinner] with count=20 and returns
-          parent_names grouped per meal type.
-        - Otherwise -> hits only for the given meal type with count=20.
+    Request body (JSON) — all optional unless noted:
+        meal_type          - 'breakfast' | 'lunch' | 'snack' | 'dinner' | 'dessert' | 'all'
+        cuisine            - e.g. 'north indian', 'italian'
+        diet               - e.g. 'vegetarian', 'vegan', 'non-vegetarian'
+        prep_time_minutes  - int, max acceptable prep time
+        cook_time_minutes  - int, max acceptable cook time
+        servings           - int, minimum servings required
     """
-
     try:
         data = request.get_json(force=True, silent=True) or {}
     except Exception:
         return jsonify({"error": "Invalid JSON body"}), 400
 
-    food_type = str(data.get('food_type', '') or '').strip()
-    meals = str(data.get('meals', '') or '').strip().lower()
-    cooking_time_raw = data.get('cooking_time', 0)
-    cuisines_raw = str(data.get('cuisines', '') or '').strip()
-    disliked_raw = str(data.get('disliked', '') or '').strip()
-    cooking_style = str(data.get('cooking_style', '') or '').strip()
-    subscription = str(data.get('subscription', 'free') or 'free').strip()
+    meal_type = str(data.get('meal_type', '') or '').strip().lower()
+    cuisine   = str(data.get('cuisine', '') or '').strip()
+    diet      = str(data.get('diet', '') or '').strip()
 
-    if not meals:
-        return jsonify({"error": "meals is required"}), 400
+    def _to_int(val, field):
+        if val in ("", None):
+            return 0
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            raise ValueError(f"{field} must be an integer")
 
-    # cooking_time -> preparation_time (int)
     try:
-        preparation_time = int(cooking_time_raw) if cooking_time_raw not in ("", None) else 0
-    except (TypeError, ValueError):
-        return jsonify({"error": "cooking_time must be an integer"}), 400
+        prep_time_minutes = _to_int(data.get('prep_time_minutes'), 'prep_time_minutes')
+        cook_time_minutes = _to_int(data.get('cook_time_minutes'), 'cook_time_minutes')
+        servings          = _to_int(data.get('servings'), 'servings')
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
 
-    # Parse comma-separated lists
-    cuisines = [c.strip() for c in cuisines_raw.split(',') if c.strip()] if cuisines_raw else []
-    disliked = [d.strip() for d in disliked_raw.split(',') if d.strip()] if disliked_raw else []
-
-    # Map cooking_style -> mood. 'something_new' is not really a mood, so
-    # we treat it as "no specific mood" and let the upstream pick variety.
-    mood = "" if cooking_style.lower() in ("", "something_new") else cooking_style
-
-    # Decide which meal types to fetch
-    valid_meals = ["breakfast", "lunch", "snack", "dinner"]
-    if meals == "all":
-        meal_types_to_fetch = valid_meals
-    elif meals in valid_meals:
-        meal_types_to_fetch = [meals]
-    else:
+    valid_meals = ["breakfast", "lunch", "snack", "dinner", "dessert"]
+    if meal_type and meal_type != "all" and meal_type not in valid_meals:
         return jsonify({
-            "error": f"Invalid meals value. Must be one of {valid_meals + ['all']}"
+            "error": f"Invalid meal_type. Must be one of {valid_meals + ['all']}"
         }), 400
 
-    # Per-request fetch count from upstream API
-    fetch_count = 20
-
-    response_payload = {}
-
-    for meal_type in meal_types_to_fetch:
-        try:
-            print(f"\n========== Fetching meal_type='{meal_type}' ==========")
-            parent_names, raw_recipes = fetch_recipe_by_filter_for_values(
-                recipe_type=meal_type,
-                preparation_time=preparation_time,
-                food_type=food_type,
-                cuisines=cuisines,
-                disliked=disliked,
-                mood=mood,
-                start_index=0,
-                count=fetch_count
-            )
-        except requests.exceptions.HTTPError as e:
-            return jsonify({
-                "error": f"Upstream API error while fetching {meal_type}: {str(e)}"
-            }), 502
-        except Exception as e:
-            return jsonify({
-                "error": f"Failed to fetch recipes for {meal_type}: {str(e)}"
-            }), 500
-
-        # Build the list from raw_recipes. Prefer parent_name; if it's
-        # missing/empty on an item, fall back to heading (the dish name).
-        # For each unique meal name, also attach thumbImage, recipe_url,
-        # and YouTube Link from the same upstream item.
-        seen = set()
-        unique_meals = []
-        for item in (raw_recipes or []):
-            name = (item.get("parent_name") or "").strip()
-            if not name:
-                name = (item.get("heading") or "").strip()
-            if not name or name in seen:
-                continue
-            seen.add(name)
-
-            # Build full recipe URL (upstream returns a relative path)
-            relative_url = (item.get("url") or "").strip()
-            recipe_url = f"https://www.indiafoodnetwork.in{relative_url}" if relative_url else ""
-
-            unique_meals.append({
-                "name":         name,
-                "thumbImage":   item.get("thumbImage", "") or "",
-                "recipe_url":   recipe_url,
-                "YouTube Link": item.get("scraped_youtube_link", "") or "",
-            })
-
-        print(f"[RESULT] {meal_type}: {len(unique_meals)} meals")
-        response_payload[f"{meal_type}_names"] = unique_meals
+    try:
+        grouped_titles = fetch_recipes_from_db_by_filters(
+            meal_type=meal_type,
+            cuisine=cuisine,
+            diet=diet,
+            prep_time_minutes=prep_time_minutes,
+            cook_time_minutes=cook_time_minutes,
+            servings=servings,
+        )
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch recipes from DB: {str(e)}"}), 500
 
     return jsonify({
-        "food_type":       food_type,
-        "house_hold_size": data.get('house_hold_size'),
-        "meals":           meals,
-        "cooking_time":    preparation_time,
-        "cuisines":        cuisines,
-        "disliked":        disliked,
-        "cooking_style":   cooking_style,
-        "subscription":    subscription,
-        **response_payload
+        "filters": {
+            "meal_type":         meal_type or "all",
+            "cuisine":           cuisine,
+            "diet":              diet,
+            "prep_time_minutes": prep_time_minutes,
+            "cook_time_minutes": cook_time_minutes,
+            "servings":          servings,
+        },
+        "breakfast": grouped_titles.get("breakfast", []),
+        "lunch":     grouped_titles.get("lunch", []),
+        "snack":     grouped_titles.get("snack", []),
+        "dinner":    grouped_titles.get("dinner", []),
+        "dessert":   grouped_titles.get("dessert", []),
     }), 200
 
 @app.route('/youtube/channel-videos', methods=['GET'])
