@@ -1070,6 +1070,97 @@ async def get_festival_recipes(
 
     return results
 
+# def fetch_recipes_from_db_by_filters(
+#     meal_type: str = "",
+#     cuisine: str = "",
+#     diet: str = "",
+#     prep_time_minutes: int = 0,
+#     cook_time_minutes: int = 0,
+#     servings: int = 0,
+# ):
+#     """
+#     Fetch recipe titles from the 'recipes' table in Postgres (DB_URL) using
+#     optional filters. Any filter left empty / 0 is ignored.
+
+#     Returns a dict grouping titles by meal_type:
+#         {
+#             "breakfast": [...],
+#             "lunch":     [...],
+#             "snack":     [...],
+#             "dinner":    [...],
+#             "dessert":   [...],
+#         }
+
+#     If `meal_type` is provided (e.g. 'breakfast'), only that bucket is filled.
+#     If `meal_type` is empty or 'all', all five buckets are returned.
+#     """
+#     import psycopg2
+#     DB_URL = os.getenv("DB_URL")
+
+#     buckets = ["breakfast", "lunch", "snack", "dinner", "dessert"]
+#     grouped = {b: [] for b in buckets}
+
+#     # Build the WHERE clause dynamically so empty filters are ignored.
+#     where_clauses = []
+#     params = []
+
+#     mt = (meal_type or "").strip().lower()
+#     if mt and mt != "all":
+#         if mt not in buckets:
+#             # Unknown meal_type -> return empty grouped result
+#             return grouped
+#         where_clauses.append("LOWER(meal_type) = %s")
+#         params.append(mt)
+#     else:
+#         # Only pull rows whose meal_type is one of our known buckets
+#         where_clauses.append("LOWER(meal_type) = ANY(%s)")
+#         params.append(buckets)
+
+#     if cuisine and cuisine.strip():
+#         where_clauses.append("LOWER(cuisine) = %s")
+#         params.append(cuisine.strip().lower())
+
+#     if diet and diet.strip():
+#         where_clauses.append("LOWER(diet) = %s")
+#         params.append(diet.strip().lower())
+
+#     # Treat 0 / None as "no filter" for numeric fields; otherwise use <= so the
+#     # user gets recipes that fit *within* their time/servings budget.
+#     if prep_time_minutes and int(prep_time_minutes) > 0:
+#         where_clauses.append("prep_time_minutes <= %s")
+#         params.append(int(prep_time_minutes))
+
+#     if cook_time_minutes and int(cook_time_minutes) > 0:
+#         where_clauses.append("cook_time_minutes <= %s")
+#         params.append(int(cook_time_minutes))
+
+#     if servings and int(servings) > 0:
+#         where_clauses.append("servings >= %s")
+#         params.append(int(servings))
+
+#     where_sql = " AND ".join(where_clauses) if where_clauses else "TRUE"
+#     query = f"SELECT title, meal_type FROM recipes WHERE {where_sql};"
+
+#     try:
+#         conn = psycopg2.connect(DB_URL)
+#         cur = conn.cursor()
+#         cur.execute(query, params)
+#         rows = cur.fetchall()
+#         cur.close()
+#         conn.close()
+#     except Exception as e:
+#         print(f"[DB ERROR] fetch_recipes_from_db_by_filters: {e}")
+#         return grouped
+
+#     for title, row_meal_type in rows:
+#         if not title:
+#             continue
+#         key = (row_meal_type or "").strip().lower()
+#         if key in grouped:
+#             grouped[key].append(title)
+
+#     return grouped
+
 def fetch_recipes_from_db_by_filters(
     meal_type: str = "",
     cuisine: str = "",
@@ -1079,20 +1170,17 @@ def fetch_recipes_from_db_by_filters(
     servings: int = 0,
 ):
     """
-    Fetch recipe titles from the 'recipes' table in Postgres (DB_URL) using
-    optional filters. Any filter left empty / 0 is ignored.
+    Fetch recipes (title + id) from the 'recipes' table in Postgres (DB_URL)
+    using optional filters. Any filter left empty / 0 is ignored.
 
-    Returns a dict grouping titles by meal_type:
+    Returns a dict grouping recipes by meal_type:
         {
-            "breakfast": [...],
+            "breakfast": [{"title": "Poha", "id": "uuid-..."}, ...],
             "lunch":     [...],
             "snack":     [...],
             "dinner":    [...],
             "dessert":   [...],
         }
-
-    If `meal_type` is provided (e.g. 'breakfast'), only that bucket is filled.
-    If `meal_type` is empty or 'all', all five buckets are returned.
     """
     import psycopg2
     DB_URL = os.getenv("DB_URL")
@@ -1100,19 +1188,16 @@ def fetch_recipes_from_db_by_filters(
     buckets = ["breakfast", "lunch", "snack", "dinner", "dessert"]
     grouped = {b: [] for b in buckets}
 
-    # Build the WHERE clause dynamically so empty filters are ignored.
     where_clauses = []
     params = []
 
     mt = (meal_type or "").strip().lower()
     if mt and mt != "all":
         if mt not in buckets:
-            # Unknown meal_type -> return empty grouped result
             return grouped
         where_clauses.append("LOWER(meal_type) = %s")
         params.append(mt)
     else:
-        # Only pull rows whose meal_type is one of our known buckets
         where_clauses.append("LOWER(meal_type) = ANY(%s)")
         params.append(buckets)
 
@@ -1124,8 +1209,6 @@ def fetch_recipes_from_db_by_filters(
         where_clauses.append("LOWER(diet) = %s")
         params.append(diet.strip().lower())
 
-    # Treat 0 / None as "no filter" for numeric fields; otherwise use <= so the
-    # user gets recipes that fit *within* their time/servings budget.
     if prep_time_minutes and int(prep_time_minutes) > 0:
         where_clauses.append("prep_time_minutes <= %s")
         params.append(int(prep_time_minutes))
@@ -1139,7 +1222,7 @@ def fetch_recipes_from_db_by_filters(
         params.append(int(servings))
 
     where_sql = " AND ".join(where_clauses) if where_clauses else "TRUE"
-    query = f"SELECT title, meal_type FROM recipes WHERE {where_sql};"
+    query = f"SELECT id, title, meal_type FROM recipes WHERE {where_sql};"
 
     try:
         conn = psycopg2.connect(DB_URL)
@@ -1152,11 +1235,104 @@ def fetch_recipes_from_db_by_filters(
         print(f"[DB ERROR] fetch_recipes_from_db_by_filters: {e}")
         return grouped
 
-    for title, row_meal_type in rows:
+    for recipe_id, title, row_meal_type in rows:
         if not title:
             continue
         key = (row_meal_type or "").strip().lower()
         if key in grouped:
-            grouped[key].append(title)
+            grouped[key].append({"title": title, "id": str(recipe_id)})
 
     return grouped
+
+def fetch_recipes_flat_from_db(
+    meal_type: str = "",
+    cuisines: list = None,
+    disliked: list = None,
+    diet: str = "",
+    prep_time_minutes: int = 0,
+    cook_time_minutes: int = 0,
+    servings: int = 0,
+    start_index: int = 0,
+    count: int = 10,
+):
+    """
+    Fetch recipes (title + id) from the 'recipes' table in Postgres (DB_URL)
+    as a flat list — no meal_type grouping.
+
+    All filters are optional. Pagination via start_index + count.
+
+    Returns:
+        list[dict]: [{"title": "...", "id": "..."}, ...]
+    """
+    import psycopg2
+    DB_URL = os.getenv("DB_URL")
+
+    cuisines = cuisines or []
+    disliked = disliked or []
+
+    where_clauses = []
+    params = []
+
+    mt = (meal_type or "").strip().lower()
+    if mt and mt != "all":
+        where_clauses.append("LOWER(meal_type) = %s")
+        params.append(mt)
+
+    if diet and diet.strip():
+        where_clauses.append("LOWER(diet) = %s")
+        params.append(diet.strip().lower())
+
+    # Multiple cuisines -> match ANY of them
+    if cuisines:
+        cuisines_lower = [c.strip().lower() for c in cuisines if c.strip()]
+        if cuisines_lower:
+            where_clauses.append("LOWER(cuisine) = ANY(%s)")
+            params.append(cuisines_lower)
+
+    # Disliked -> exclude if title contains any of these terms.
+    # (If your DB has a separate ingredients column, swap `title` for that.)
+    for term in disliked:
+        term = term.strip()
+        if term:
+            where_clauses.append("title NOT ILIKE %s")
+            params.append(f"%{term}%")
+
+    if prep_time_minutes and int(prep_time_minutes) > 0:
+        where_clauses.append("prep_time_minutes <= %s")
+        params.append(int(prep_time_minutes))
+
+    if cook_time_minutes and int(cook_time_minutes) > 0:
+        where_clauses.append("cook_time_minutes <= %s")
+        params.append(int(cook_time_minutes))
+
+    if servings and int(servings) > 0:
+        where_clauses.append("servings >= %s")
+        params.append(int(servings))
+
+    where_sql = " AND ".join(where_clauses) if where_clauses else "TRUE"
+    query = (
+        f"SELECT id, title FROM recipes "
+        f"WHERE {where_sql} "
+        f"ORDER BY title "
+        f"LIMIT %s OFFSET %s;"
+    )
+    params.extend([int(count), int(start_index)])
+
+    results = []
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute(query, params)
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"[DB ERROR] fetch_recipes_flat_from_db: {e}")
+        return results
+
+    for recipe_id, title in rows:
+        if not title:
+            continue
+        results.append({"title": title, "id": str(recipe_id)})
+
+    return results
