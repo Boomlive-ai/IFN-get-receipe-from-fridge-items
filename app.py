@@ -1103,6 +1103,152 @@ def get_channel_videos():
 
     except Exception as e:
         return jsonify({"error": str(e), "type": type(e).__name__}), 500  # ← show error type too
+
+
+@app.route('/recipe_by_values_1', methods=['GET'])
+def recipe_by_values_1():
+    """
+    Duplicate of /recipe_by_values, but the Recipe URL is built from the
+    recipe's `id` fetched from the Postgres `recipes` table instead of
+    being constructed from indiafoodnetwork.in.
+
+    Query params: same as /recipe_by_values
+    """
+    import psycopg2
+
+    meal_type = request.args.get('mealType', '').strip()
+    preparation_time = request.args.get('preparationTime', '').strip()
+    food_type = request.args.get('foodType', '').strip()
+    mood = request.args.get('mood', '').strip()
+    cuisines_raw = request.args.get('cuisines', '').strip()
+    disliked_raw = request.args.get('disliked', '').strip()
+    subscription = request.args.get('subscription', 'free').strip()
+    start_index = request.args.get('startIndex', '0').strip()
+    count = request.args.get('count', '10').strip()
+
+    if not meal_type:
+        return jsonify({"error": "mealType is required"}), 400
+    if not preparation_time:
+        return jsonify({"error": "preparationTime is required"}), 400
+
+    try:
+        preparation_time = int(preparation_time)
+    except ValueError:
+        return jsonify({"error": "preparationTime must be an integer"}), 400
+
+    try:
+        start_index = int(start_index)
+        if start_index < 0:
+            return jsonify({"error": "startIndex must be a non-negative integer"}), 400
+    except ValueError:
+        return jsonify({"error": "startIndex must be an integer"}), 400
+
+    try:
+        count = int(count)
+        if count < 1:
+            return jsonify({"error": "count must be a positive integer"}), 400
+    except ValueError:
+        return jsonify({"error": "count must be an integer"}), 400
+
+    cuisines = [c.strip() for c in cuisines_raw.split(',') if c.strip()] if cuisines_raw else []
+    disliked = [d.strip() for d in disliked_raw.split(',') if d.strip()] if disliked_raw else []
+
+    fetch_count = count * 10
+
+    try:
+        parent_names, raw_recipes = fetch_recipe_by_filter_for_values(
+            recipe_type=meal_type,
+            preparation_time=preparation_time,
+            food_type=food_type,
+            cuisines=cuisines,
+            disliked=disliked,
+            mood=mood,
+            start_index=start_index,
+            count=fetch_count
+        )
+
+        if not raw_recipes:
+            return jsonify({"error": "No matching recipes found for the given preferences"}), 404
+
+        max_results = count if subscription == 'pro' else min(count, 5)
+        raw_recipes = raw_recipes[:max_results]
+
+        # ---- Fetch ids from Postgres in a single batch ----
+        dish_names = [item.get("heading", "") for item in raw_recipes if item.get("heading")]
+        name_to_id = {}
+
+        if dish_names:
+            DB_URL = os.getenv("DB_URL")
+            try:
+                conn = psycopg2.connect(DB_URL)
+                cur = conn.cursor()
+
+                # Exact match first
+                cur.execute(
+                    "SELECT id, name FROM recipes WHERE name = ANY(%s)",
+                    (dish_names,)
+                )
+                for rid, rname in cur.fetchall():
+                    name_to_id[rname] = rid
+
+                # Fallback: ILIKE for anything we didn't match exactly
+                missing = [n for n in dish_names if n not in name_to_id]
+                for name in missing:
+                    cur.execute(
+                        "SELECT id FROM recipes WHERE name ILIKE %s LIMIT 1",
+                        (f"%{name}%",)
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        name_to_id[name] = row[0]
+
+                cur.close()
+                conn.close()
+            except Exception as e:
+                print(f"DB error fetching recipe ids: {e}")
+
+        # ---- Build response ----
+        recipes = []
+        for item in raw_recipes:
+            heading = item.get("heading", "")
+            recipe_id = name_to_id.get(heading)
+            recipe_url = str(recipe_id) if recipe_id is not None else ""
+
+            ingredients = [i.get("heading", "") for i in item.get("ingredient", [])]
+            steps = [
+                s.get("description", "")
+                for s in sorted(item.get("cookingstep", []), key=lambda x: x.get("uid", 0))
+            ]
+            recipes.append({
+                "Dish Name":       heading,
+                "parent_name":     item.get("parent_name", ""),
+                "YouTube Link":    item.get("scraped_youtube_link", ""),
+                "Ingredients":     ingredients,
+                "Steps to Cook":   steps,
+                "Story":           item.get("story", ""),
+                "Thumbnail Image": item.get("thumbImage", ""),
+                "Recipe URL":      recipe_url,
+                "recipe_id":       recipe_id,
+            })
+
+        return jsonify({
+            "mealType":           meal_type,
+            "preparationTime":    preparation_time,
+            "foodType":           food_type,
+            "mood":               mood,
+            "cuisines":           cuisines,
+            "disliked":           disliked,
+            "subscription":       subscription,
+            "start_index":        start_index,
+            "count":              len(recipes),
+            "parent_names":       parent_names,
+            "recipes":            recipes
+        }), 200
+
+    except requests.exceptions.HTTPError as e:
+        return jsonify({"error": f"Upstream API error: {str(e)}"}), 502
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch recipes: {str(e)}"}), 500
     
 if __name__ == '__main__':
     import uvicorn
