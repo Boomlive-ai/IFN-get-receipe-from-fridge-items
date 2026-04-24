@@ -1278,9 +1278,23 @@ def fetch_recipes_flat_from_db(
         where_clauses.append("LOWER(meal_type) = %s")
         params.append(mt)
 
+    # if diet and diet.strip():
+    #     where_clauses.append("LOWER(diet) = %s")
+    #     params.append(diet.strip().lower())
+    
     if diet and diet.strip():
-        where_clauses.append("LOWER(diet) = %s")
-        params.append(diet.strip().lower())
+        d = diet.strip().lower()
+        # Normalize extracted value -> DB value
+        if d in ("vegetarian", "veg"):
+            db_value = "veg"
+        elif d in ("non-vegetarian", "non-veg", "nonveg", "non vegetarian"):
+            db_value = "non-veg"
+        elif d == "vegan":
+            db_value = "vegan"
+        else:
+            db_value = d
+        where_clauses.append("LOWER(TRIM(diet)) = %s")
+        params.append(db_value)
 
     # Multiple cuisines -> match ANY of them
     if cuisines:
@@ -1336,3 +1350,401 @@ def fetch_recipes_flat_from_db(
         results.append({"title": title, "id": str(recipe_id)})
 
     return results
+
+# def fetch_recipes_by_ingredients_match(
+#     ingredients: list,
+#     match_threshold: float = 0.85,
+#     limit: int = 20,
+# ):
+#     """
+#     Find recipes that use the user's ingredients.
+
+#     Match percentage = (matched ingredients) / (user's ingredient count)
+#     i.e. "how many of what the user has does this recipe actually use?"
+
+#     Args:
+#         ingredients: list of ingredient names the user has.
+#         match_threshold: fraction between 0 and 1 (default 0.85 = 85%).
+#         limit: max number of recipes to return.
+
+#     Returns:
+#         list[dict]: [{"title": "...", "id": "..."}, ...] sorted by best match first.
+#     """
+#     import psycopg2
+#     DB_URL = os.getenv("DB_URL")
+
+#     normalized = list({i.strip().lower() for i in (ingredients or []) if i and i.strip()})
+#     if not normalized:
+#         print("[DEBUG] No ingredients provided after normalization")
+#         return []
+
+#     user_count = len(normalized)
+
+#     # DEBUG: show what we're about to query with
+#     print(f"[DEBUG] normalized ingredients: {normalized}")
+#     print(f"[DEBUG] user_count: {user_count}")
+#     print(f"[DEBUG] threshold: {match_threshold}  (need >= {user_count * match_threshold:.2f} matches)")
+#     print(f"[DEBUG] limit: {limit}")
+
+#     query = """
+#         SELECT
+#             r.id,
+#             r.title,
+#             COUNT(DISTINCT ri.normalized_name) FILTER (
+#                 WHERE ri.normalized_name = ANY(%s)
+#             ) AS matched,
+#             COUNT(DISTINCT ri.normalized_name) AS total
+#         FROM recipes r
+#         JOIN recipe_ingredients ri ON ri.recipe_id = r.id
+#         GROUP BY r.id, r.title
+#         HAVING (
+#             COUNT(DISTINCT ri.normalized_name) FILTER (
+#                 WHERE ri.normalized_name = ANY(%s)
+#             )::float / %s::float
+#         ) >= %s
+#         ORDER BY matched DESC, total ASC, r.title ASC
+#         LIMIT %s;
+#     """
+
+#     params = [normalized, normalized, user_count, float(match_threshold), int(limit)]
+
+#     results = []
+#     try:
+#         conn = psycopg2.connect(DB_URL)
+#         cur = conn.cursor()
+#         cur.execute(query, params)
+#         rows = cur.fetchall()
+#         cur.close()
+#         conn.close()
+
+#         # DEBUG: show what came back
+#         print(f"[DEBUG] rows returned from DB: {len(rows)}")
+#         for row in rows[:5]:
+#             print(f"[DEBUG]   {row}")
+#     except Exception as e:
+#         print(f"[DB ERROR] fetch_recipes_by_ingredients_match: {e}")
+#         return results
+
+#     for recipe_id, title, matched, total in rows:
+#         if not title:
+#             continue
+#         results.append({"title": title, "id": str(recipe_id)})
+
+#     return results
+
+def fetch_recipes_by_ingredients_match(
+    ingredients: list,
+    match_threshold: float = 0.85,
+    limit: int = 20,
+    start_index: int = 0,
+):
+    """
+    Find recipes that use the user's ingredients.
+
+    Match percentage = (matched ingredients) / (user's ingredient count)
+    i.e. "how many of what the user has does this recipe actually use?"
+    """
+    import psycopg2
+    DB_URL = os.getenv("DB_URL")
+
+    normalized = list({i.strip().lower() for i in (ingredients or []) if i and i.strip()})
+    if not normalized:
+        print("[DEBUG] No ingredients provided after normalization")
+        return []
+
+    user_count = len(normalized)
+
+    print(f"[DEBUG] normalized ingredients: {normalized}")
+    print(f"[DEBUG] user_count: {user_count}")
+    print(f"[DEBUG] threshold: {match_threshold}  (need >= {user_count * match_threshold:.2f} matches)")
+    print(f"[DEBUG] limit: {limit}, start_index: {start_index}")
+
+    query = """
+        SELECT
+            r.id,
+            r.title,
+            COUNT(DISTINCT ri.normalized_name) FILTER (
+                WHERE ri.normalized_name = ANY(%s)
+            ) AS matched,
+            COUNT(DISTINCT ri.normalized_name) AS total
+        FROM recipes r
+        JOIN recipe_ingredients ri ON ri.recipe_id = r.id
+        GROUP BY r.id, r.title
+        HAVING (
+            COUNT(DISTINCT ri.normalized_name) FILTER (
+                WHERE ri.normalized_name = ANY(%s)
+            )::float / %s::float
+        ) >= %s
+        ORDER BY matched DESC, total ASC, r.title ASC
+        LIMIT %s OFFSET %s;
+    """
+
+    params = [
+        normalized, normalized, user_count,
+        float(match_threshold),
+        int(limit), int(start_index),
+    ]
+
+    results = []
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute(query, params)
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        print(f"[DEBUG] rows returned from DB: {len(rows)}")
+        for row in rows[:5]:
+            print(f"[DEBUG]   {row}")
+    except Exception as e:
+        print(f"[DB ERROR] fetch_recipes_by_ingredients_match: {e}")
+        return results
+
+    for recipe_id, title, matched, total in rows:
+        if not title:
+            continue
+        results.append({"title": title, "id": str(recipe_id)})
+
+    return results
+
+# def classify_and_extract_recipe_query(user_query: str) -> dict:
+#     """
+#     Use OpenAI to classify a natural-language recipe request into one of
+#     three intents and extract the parameters needed by that function.
+
+#     Returns a dict like:
+#         {
+#             "intent": "by_ingredients" | "grouped_by_meal" | "flat_filter",
+#             "params": { ...keyword args for the chosen function... }
+#         }
+#     """
+#     import json
+
+#     system_prompt = """You are a recipe query parser. Given a user's natural-language
+# request, classify it into ONE of three intents and extract relevant parameters.
+
+# INTENTS:
+
+# 1. "by_ingredients" — user lists ingredients they have and wants recipes they can make.
+#    Trigger phrases: "I have X, Y, Z", "what can I cook with…", "using these ingredients…"
+#    params: {
+#      "ingredients": [list of ingredient strings],
+#      "match_threshold": float 0.0–1.0 (default 0.5),
+#      "limit": int (default 20)
+#    }
+
+# 2. "grouped_by_meal" — user wants recipes across multiple meal types at once
+#    (a day plan, full meal plan, "show me breakfast + lunch + dinner").
+#    Trigger phrases: "full day meal plan", "breakfast and dinner ideas", "plan my meals"
+#    params: {
+#      "meal_type": "all",
+#      "cuisine": str or "",
+#      "diet": "vegetarian"|"vegan"|"non-vegetarian"|"",
+#      "prep_time_minutes": int (0 = no limit),
+#      "cook_time_minutes": int (0 = no limit),
+#      "servings": int (0 = no limit)
+#    }
+
+# 3. "flat_filter" — user wants a single meal type with optional filters.
+#    This is the DEFAULT when the query names just one meal type.
+#    Trigger phrases: "quick veg lunch", "italian dinner under 30 min", "healthy snacks"
+#    params: {
+#      "meal_type": "breakfast"|"lunch"|"snack"|"dinner"|"dessert",
+#      "cuisines": [list of strings],
+#      "disliked": [list of strings to avoid],
+#      "diet": "vegetarian"|"vegan"|"non-vegetarian"|"",
+#      "prep_time_minutes": int,
+#      "cook_time_minutes": int,
+#      "servings": int,
+#      "count": int (default 10)
+#    }
+
+# RULES:
+# - If user lists ingredients they HAVE, always pick "by_ingredients".
+# - If query mentions multiple meal types or "day plan", pick "grouped_by_meal".
+# - Otherwise pick "flat_filter".
+# - Extract times as integers in minutes (e.g. "half an hour" -> 30, "an hour" -> 60).
+# - Extract diet from words like "veg"/"vegetarian" -> "vegetarian", "vegan" -> "vegan",
+#   "non-veg"/"chicken"/"meat" -> "non-vegetarian". If unclear, leave as "".
+# - For disliked: words like "no mushroom", "without brinjal", "I hate okra" -> add to disliked.
+# - Respond with ONLY a JSON object, no markdown fences, no prose."""
+
+#     try:
+#         response = client.chat.completions.create(
+#             model="gpt-4o-mini",
+#             messages=[
+#                 {"role": "system", "content": system_prompt},
+#                 {"role": "user", "content": user_query},
+#             ],
+#             temperature=0,
+#             response_format={"type": "json_object"},
+#         )
+#         raw = response.choices[0].message.content.strip()
+#         parsed = json.loads(raw)
+#         print(f"[DEBUG][smart_ai] parsed intent: {parsed}")
+#         return parsed
+#     except Exception as e:
+#         print(f"[OPENAI ERROR] classify_and_extract_recipe_query: {e}")
+#         # Safe fallback: treat as flat_filter with no constraints
+#         return {
+#             "intent": "flat_filter",
+#             "params": {"meal_type": "", "count": 10},
+#         }
+
+def classify_and_extract_recipe_query(user_query: str) -> dict:
+    """
+    Use OpenAI to classify a natural-language recipe request into one of
+    three intents and extract the parameters needed by that function.
+    """
+    import json
+    from openai import OpenAI
+
+    # Create a dedicated sync client so we never collide with any AsyncOpenAI
+    # `client` that might exist at module scope.
+    sync_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    system_prompt = """You are a recipe query parser. Your ONLY job is to read a user's
+natural-language request and output a JSON object classifying it into ONE intent
+and extracting EVERY relevant parameter mentioned.
+
+CRITICAL RULES:
+- NEVER leave a field empty/0 if the user mentioned it. Extract aggressively.
+- Always output valid JSON. No prose, no markdown fences.
+- Time phrases -> integer minutes: "45 minutes"->45, "half hour"->30, "an hour"->60, "quick"->20.
+  When user says "X minutes to make/cook", put X into BOTH prep_time_minutes AND cook_time_minutes.
+- Diet extraction (MANDATORY when mentioned):
+    "veg", "vegetarian"            -> "vegetarian"
+    "vegan"                        -> "vegan"
+    "non-veg", "non veg", "nonveg",
+    "chicken", "mutton", "meat",
+    "fish", "egg", "seafood"       -> "non-vegetarian"
+- Cuisine extraction: "north indian","south indian","italian","mexican","chinese","thai",
+  "punjabi","bengali","maharashtrian","gujarati", etc.
+- If a meal type is not clearly stated (breakfast/lunch/snack/dinner/dessert),
+  leave meal_type as "" but STILL fill diet/cuisine/time.
+
+INTENTS:
+
+1. "by_ingredients"
+   Trigger: user says "I have X", "I've got…", "what can I cook with…", "using these ingredients".
+   params: {
+     "ingredients": [string, ...],
+     "match_threshold": float (default 0.5),
+     "limit": int (default 20)
+   }
+
+2. "grouped_by_meal"
+   Trigger: user wants MULTIPLE meal types ("day plan", "meal plan", "breakfast and dinner").
+   params: {
+     "meal_type": "all",
+     "cuisine": string,
+     "diet": "vegetarian"|"vegan"|"non-vegetarian"|"",
+     "prep_time_minutes": int,
+     "cook_time_minutes": int,
+     "servings": int
+   }
+
+3. "flat_filter"  (DEFAULT — use when query is about one or no meal type)
+   params: {
+     "meal_type": "breakfast"|"lunch"|"snack"|"dinner"|"dessert"|"",
+     "cuisines": [string, ...],
+     "disliked": [string, ...],
+     "diet": "vegetarian"|"vegan"|"non-vegetarian"|"",
+     "prep_time_minutes": int,
+     "cook_time_minutes": int,
+     "servings": int,
+     "count": int (default 10)
+   }
+
+EXAMPLES:
+
+User: "I want to make 45 minutes non veg food"
+Output: {
+  "intent": "flat_filter",
+  "params": {
+    "meal_type": "",
+    "cuisines": [],
+    "disliked": [],
+    "diet": "non-vegetarian",
+    "prep_time_minutes": 45,
+    "cook_time_minutes": 45,
+    "servings": 0,
+    "count": 10
+  }
+}
+
+User: "quick veg lunch under 30 minutes, no mushroom"
+Output: {
+  "intent": "flat_filter",
+  "params": {
+    "meal_type": "lunch",
+    "cuisines": [],
+    "disliked": ["mushroom"],
+    "diet": "vegetarian",
+    "prep_time_minutes": 30,
+    "cook_time_minutes": 30,
+    "servings": 0,
+    "count": 10
+  }
+}
+
+User: "I have tomato, onion, paneer — what can I cook?"
+Output: {
+  "intent": "by_ingredients",
+  "params": {
+    "ingredients": ["tomato", "onion", "paneer"],
+    "match_threshold": 0.5,
+    "limit": 20
+  }
+}
+
+User: "full day vegetarian meal plan for 4 people"
+Output: {
+  "intent": "grouped_by_meal",
+  "params": {
+    "meal_type": "all",
+    "cuisine": "",
+    "diet": "vegetarian",
+    "prep_time_minutes": 0,
+    "cook_time_minutes": 0,
+    "servings": 4
+  }
+}
+
+User: "italian dinner"
+Output: {
+  "intent": "flat_filter",
+  "params": {
+    "meal_type": "dinner",
+    "cuisines": ["italian"],
+    "disliked": [],
+    "diet": "",
+    "prep_time_minutes": 0,
+    "cook_time_minutes": 0,
+    "servings": 0,
+    "count": 10
+  }
+}"""
+
+    try:
+        response = sync_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_query},
+            ],
+            temperature=0,
+            response_format={"type": "json_object"},
+        )
+        raw = response.choices[0].message.content.strip()
+        parsed = json.loads(raw)
+        print(f"[DEBUG][smart_ai] user_query: {user_query}")
+        print(f"[DEBUG][smart_ai] parsed intent: {parsed}")
+        return parsed
+    except Exception as e:
+        print(f"[OPENAI ERROR] classify_and_extract_recipe_query: {e}")
+        return {
+            "intent": "flat_filter",
+            "params": {"meal_type": "", "count": 10},
+        }

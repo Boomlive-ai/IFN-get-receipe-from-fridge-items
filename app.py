@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import requests
 from tools.detect_items import detect_items
 # from tools.tools import fetch_youtube_link, find_recipe_by_ingredients, fetch_recipe_data, store_all_recipe_data_in_pinecone,find_recipe_using_query, get_festival_recipes
-from tools.tools import fetch_youtube_link, find_recipe_by_ingredients, fetch_recipe_data, store_all_recipe_data_in_pinecone, find_recipe_using_query, get_festival_recipes, fetch_recipes_by_filter, fetch_recipe_by_filter_for_values, fetch_recipes_from_db_by_filters, fetch_recipes_flat_from_db
+from tools.tools import fetch_youtube_link, find_recipe_by_ingredients, fetch_recipe_data, store_all_recipe_data_in_pinecone, find_recipe_using_query, get_festival_recipes, fetch_recipes_by_filter, fetch_recipe_by_filter_for_values, fetch_recipes_from_db_by_filters, fetch_recipes_flat_from_db, fetch_recipes_by_ingredients_match, classify_and_extract_recipe_query
 from flask_cors import CORS  # Import CORS
 from utils import get_festivals  # Import the new festival function
 from tools.youtube_service import YouTubeService
@@ -1195,8 +1195,334 @@ def get_channel_videos():
     except Exception as e:
         return jsonify({"error": str(e), "type": type(e).__name__}), 500  # ← show error type too
 
+# @app.route('/recipe_by_ingredients', methods=['GET'])
+# def recipe_by_ingredients():
+#     """
+#     Find recipes that can be made with the provided ingredients (≥85% match).
 
+#     Query params:
+#         ingredients  - repeatable param, one per ingredient [Required]
+#                        e.g. ?ingredients=Tomato&ingredients=Onion&ingredients=Paneer
+#         threshold    - optional float 0.0–1.0 (default 0.85)
+#         limit        - optional int, max results (default 20)
 
+#     Returns a flat list of {title, id}.
+#     """
+#     ingredients = request.args.getlist('ingredients')
+#     ingredients = [i.strip() for i in ingredients if i and i.strip()]
+
+#     if not ingredients:
+#         return jsonify({"error": "At least one ingredient is required"}), 400
+
+#     threshold_raw = request.args.get('threshold', '0.85').strip()
+#     limit_raw = request.args.get('limit', '20').strip()
+
+#     try:
+#         threshold = float(threshold_raw)
+#         if not (0 < threshold <= 1):
+#             return jsonify({"error": "threshold must be between 0 and 1"}), 400
+#     except ValueError:
+#         return jsonify({"error": "threshold must be a number"}), 400
+
+#     try:
+#         limit = int(limit_raw)
+#         if limit < 1:
+#             return jsonify({"error": "limit must be a positive integer"}), 400
+#     except ValueError:
+#         return jsonify({"error": "limit must be an integer"}), 400
+
+#     try:
+#         recipes = fetch_recipes_by_ingredients_match(
+#             ingredients=ingredients,
+#             match_threshold=threshold,
+#             limit=limit,
+#         )
+#     except Exception as e:
+#         return jsonify({"error": f"Failed to fetch recipes from DB: {str(e)}"}), 500
+
+#     return jsonify({
+#         "ingredients": ingredients,
+#         "threshold": threshold,
+#         "count": len(recipes),
+#         "recipes": recipes,
+#     }), 200
+
+@app.route('/recipe_by_ingredients', methods=['GET'])
+def recipe_by_ingredients():
+    """
+    Find recipes that can be made with the provided ingredients.
+
+    Query params:
+        ingredients  - repeatable param, one per ingredient [Required]
+        threshold    - optional float 0.0–1.0 (default 0.85)
+        startIndex   - optional int, pagination offset (default 0)
+        count        - optional int, page size (default 20)
+    """
+    ingredients = request.args.getlist('ingredients')
+    ingredients = [i.strip() for i in ingredients if i and i.strip()]
+
+    if not ingredients:
+        return jsonify({"error": "At least one ingredient is required"}), 400
+
+    threshold_raw   = request.args.get('threshold', '0.85').strip()
+    start_index_raw = request.args.get('startIndex', '0').strip()
+    count_raw       = request.args.get('count', '20').strip()
+
+    try:
+        threshold = float(threshold_raw)
+        if not (0 < threshold <= 1):
+            return jsonify({"error": "threshold must be between 0 and 1"}), 400
+    except ValueError:
+        return jsonify({"error": "threshold must be a number"}), 400
+
+    try:
+        start_index = int(start_index_raw)
+        if start_index < 0:
+            return jsonify({"error": "startIndex must be >= 0"}), 400
+    except ValueError:
+        return jsonify({"error": "startIndex must be an integer"}), 400
+
+    try:
+        count = int(count_raw)
+        if count < 1:
+            return jsonify({"error": "count must be a positive integer"}), 400
+    except ValueError:
+        return jsonify({"error": "count must be an integer"}), 400
+
+    try:
+        recipes = fetch_recipes_by_ingredients_match(
+            ingredients=ingredients,
+            match_threshold=threshold,
+            limit=count,
+            start_index=start_index,
+        )
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch recipes from DB: {str(e)}"}), 500
+
+    return jsonify({
+        "ingredients": ingredients,
+        "threshold":   threshold,
+        "start_index": start_index,
+        "count":       len(recipes),
+        "recipes":     recipes,
+    }), 200
+
+# @app.route('/smart_ai_recipe_by_query', methods=['POST'])
+# def smart_ai_recipe_by_query():
+#     """
+#     Smart recipe search from a natural-language query. Uses OpenAI to detect
+#     intent and extract parameters, then routes to the appropriate DB function.
+
+#     Request body (JSON):
+#         query - natural language string, e.g.
+#                 "I have tomato, onion, paneer — what can I cook?"
+#                 "quick veg lunch under 30 minutes"
+#                 "give me a full day meal plan, vegetarian"
+#                 [Required]
+
+#     Response:
+#         {
+#           "query":   "<original>",
+#           "intent":  "by_ingredients" | "grouped_by_meal" | "flat_filter",
+#           "params":  { ... },          # what the AI extracted
+#           "recipes": ...               # shape depends on intent (see below)
+#         }
+
+#     Response `recipes` shapes:
+#         - by_ingredients  -> flat list: [{"title","id"}, ...]
+#         - grouped_by_meal -> dict:      {"breakfast": [...], "lunch": [...], ...}
+#         - flat_filter     -> flat list: [{"title","id"}, ...]
+#     """
+#     try:
+#         data = request.get_json(force=True, silent=True) or {}
+#     except Exception:
+#         return jsonify({"error": "Invalid JSON body"}), 400
+
+#     user_query = str(data.get('query', '') or '').strip()
+#     if not user_query:
+#         return jsonify({"error": "query is required"}), 400
+
+#     # Step 1: ask OpenAI to classify + extract
+#     try:
+#         parsed = classify_and_extract_recipe_query(user_query)
+#     except Exception as e:
+#         return jsonify({"error": f"Failed to parse query: {str(e)}"}), 500
+
+#     intent = (parsed.get("intent") or "").strip()
+#     params = parsed.get("params") or {}
+
+#     # Step 2: route to the appropriate function
+#     try:
+#         if intent == "by_ingredients":
+#             recipes = fetch_recipes_by_ingredients_match(
+#                 ingredients=params.get("ingredients") or [],
+#                 match_threshold=float(params.get("match_threshold") or 0.5),
+#                 limit=int(params.get("limit") or 20),
+#             )
+
+#         elif intent == "grouped_by_meal":
+#             recipes = fetch_recipes_from_db_by_filters(
+#                 meal_type=params.get("meal_type") or "all",
+#                 cuisine=params.get("cuisine") or "",
+#                 diet=params.get("diet") or "",
+#                 prep_time_minutes=int(params.get("prep_time_minutes") or 0),
+#                 cook_time_minutes=int(params.get("cook_time_minutes") or 0),
+#                 servings=int(params.get("servings") or 0),
+#             )
+
+#         elif intent == "flat_filter":
+#             recipes = fetch_recipes_flat_from_db(
+#                 meal_type=params.get("meal_type") or "",
+#                 cuisines=params.get("cuisines") or [],
+#                 disliked=params.get("disliked") or [],
+#                 diet=params.get("diet") or "",
+#                 prep_time_minutes=int(params.get("prep_time_minutes") or 0),
+#                 cook_time_minutes=int(params.get("cook_time_minutes") or 0),
+#                 servings=int(params.get("servings") or 0),
+#                 start_index=0,
+#                 count=int(params.get("count") or 10),
+#             )
+
+#         else:
+#             return jsonify({
+#                 "error": f"Unknown intent returned by AI: {intent}",
+#                 "parsed": parsed,
+#             }), 500
+
+#     except Exception as e:
+#         return jsonify({
+#             "error": f"Failed while executing intent '{intent}': {str(e)}",
+#             "parsed": parsed,
+#         }), 500
+
+#     return jsonify({
+#         "query":   user_query,
+#         "intent":  intent,
+#         "params":  params,
+#         "recipes": recipes,
+#     }), 200
+
+@app.route('/smart_ai_recipe_by_query', methods=['POST'])
+def smart_ai_recipe_by_query():
+    """
+    Smart recipe search from a natural-language query. Uses OpenAI to detect
+    intent and extract parameters, then routes to the appropriate DB function.
+
+    Request body (JSON):
+        query       - natural language string [Required]
+        startIndex  - pagination offset (default 0)  [Optional]
+        count       - page size (default 10)         [Optional]
+
+    Pagination behaviour per intent:
+        - by_ingredients  -> applied at DB level (OFFSET/LIMIT)
+        - flat_filter     -> applied at DB level (OFFSET/LIMIT)
+        - grouped_by_meal -> applied per bucket in Python
+                             (each meal_type sliced independently)
+    """
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        return jsonify({"error": "Invalid JSON body"}), 400
+
+    user_query = str(data.get('query', '') or '').strip()
+    if not user_query:
+        return jsonify({"error": "query is required"}), 400
+
+    # --- parse pagination from body ---
+    def _to_int(val, field, default):
+        if val in ("", None):
+            return default
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            raise ValueError(f"{field} must be an integer")
+
+    try:
+        start_index = _to_int(data.get('startIndex'), 'startIndex', 0)
+        count       = _to_int(data.get('count'), 'count', 10)
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+
+    if start_index < 0:
+        return jsonify({"error": "startIndex must be >= 0"}), 400
+    if count < 1:
+        return jsonify({"error": "count must be a positive integer"}), 400
+
+    # --- Step 1: classify + extract via OpenAI ---
+    try:
+        parsed = classify_and_extract_recipe_query(user_query)
+    except Exception as e:
+        return jsonify({"error": f"Failed to parse query: {str(e)}"}), 500
+
+    intent = (parsed.get("intent") or "").strip()
+    params = parsed.get("params") or {}
+
+    # --- Step 2: route, applying pagination ---
+    try:
+        if intent == "by_ingredients":
+            recipes = fetch_recipes_by_ingredients_match(
+                ingredients=params.get("ingredients") or [],
+                match_threshold=float(params.get("match_threshold") or 0.5),
+                limit=count,
+                start_index=start_index,
+            )
+
+        elif intent == "grouped_by_meal":
+            full = fetch_recipes_from_db_by_filters(
+                meal_type=params.get("meal_type") or "all",
+                cuisine=params.get("cuisine") or "",
+                diet=params.get("diet") or "",
+                prep_time_minutes=int(params.get("prep_time_minutes") or 0),
+                cook_time_minutes=int(params.get("cook_time_minutes") or 0),
+                servings=int(params.get("servings") or 0),
+            )
+            # Paginate each bucket independently
+            recipes = {
+                bucket: items[start_index : start_index + count]
+                for bucket, items in full.items()
+            }
+
+        elif intent == "flat_filter":
+            recipes = fetch_recipes_flat_from_db(
+                meal_type=params.get("meal_type") or "",
+                cuisines=params.get("cuisines") or [],
+                disliked=params.get("disliked") or [],
+                diet=params.get("diet") or "",
+                prep_time_minutes=int(params.get("prep_time_minutes") or 0),
+                cook_time_minutes=int(params.get("cook_time_minutes") or 0),
+                servings=int(params.get("servings") or 0),
+                start_index=start_index,
+                count=count,
+            )
+
+        else:
+            return jsonify({
+                "error":  f"Unknown intent returned by AI: {intent}",
+                "parsed": parsed,
+            }), 500
+
+    except Exception as e:
+        return jsonify({
+            "error":  f"Failed while executing intent '{intent}': {str(e)}",
+            "parsed": parsed,
+        }), 500
+
+    # Determine returned count depending on shape
+    returned_count = (
+        sum(len(v) for v in recipes.values())
+        if isinstance(recipes, dict)
+        else len(recipes)
+    )
+
+    return jsonify({
+        "query":       user_query,
+        "intent":      intent,
+        "params":      params,
+        "start_index": start_index,
+        "count":       returned_count,
+        "recipes":     recipes,
+    }), 200
+    
 if __name__ == '__main__':
     import uvicorn
     app.run(debug=True, host="0.0.0.0", port=5000)
