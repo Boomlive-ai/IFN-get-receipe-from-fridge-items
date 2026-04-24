@@ -378,6 +378,90 @@ class YouTubeService:
         except Exception as e:
             logger.error(f"Error fetching channel videos: {e}")
             raise   # ← change from `return []` to `raise` so you can SEE the actual error
+        
+    def fetch_videos_by_date_range(self, date_from: str, date_to: str) -> List[Dict]:
+        """
+        Fetch videos from the channel published within [date_from, date_to] (inclusive).
+        Uses YouTube's publishedAfter/publishedBefore to avoid pulling the full channel.
+
+        Args:
+            date_from: 'YYYY-MM-DD'
+            date_to:   'YYYY-MM-DD'
+
+        Returns:
+            List of dicts with title, description, ingredients, youtube_url, published_date
+        """
+        if not self.channel_id:
+            if not self.get_channel_id():
+                logger.error("Could not retrieve channel ID")
+                return []
+
+        # Convert YYYY-MM-DD into RFC 3339 datetime bounds (UTC).
+        # publishedBefore is EXCLUSIVE, so we use the start of the next day
+        # to make date_to inclusive.
+        from datetime import datetime, timedelta
+        try:
+            d_from = datetime.strptime(date_from, "%Y-%m-%d")
+            d_to   = datetime.strptime(date_to,   "%Y-%m-%d")
+        except ValueError as e:
+            logger.error(f"Bad date format: {e}")
+            return []
+
+        published_after  = d_from.strftime("%Y-%m-%dT00:00:00Z")
+        published_before = (d_to + timedelta(days=1)).strftime("%Y-%m-%dT00:00:00Z")
+
+        # Page through search results
+        all_items = []
+        page_token = None
+        try:
+            while True:
+                params = {
+                    "channelId":       self.channel_id,
+                    "type":            "video",
+                    "part":            "id,snippet",
+                    "maxResults":      50,
+                    "order":           "date",
+                    "publishedAfter":  published_after,
+                    "publishedBefore": published_before,
+                }
+                if page_token:
+                    params["pageToken"] = page_token
+
+                resp = self.youtube.search().list(**params).execute()
+                all_items.extend(resp.get("items", []))
+
+                page_token = resp.get("nextPageToken")
+                if not page_token:
+                    break
+        except HttpError as e:
+            logger.error(f"Error searching videos by date: {e}")
+            return []
+
+        if not all_items:
+            logger.info(f"No videos found between {date_from} and {date_to}")
+            return []
+
+        # Grab full descriptions in batches of 50 (search only returns snippet)
+        video_ids = [it["id"]["videoId"] for it in all_items]
+        detailed = self.get_video_details(video_ids)
+        details_map = {d["video_id"]: d for d in detailed}
+
+        final = []
+        for it in all_items:
+            vid = it["id"]["videoId"]
+            full = details_map.get(vid, {})
+            full_description = full.get("description") or it["snippet"].get("description", "")
+            ingredients = self.parse_ingredients(full_description)
+            final.append({
+                "title":          it["snippet"]["title"],
+                "description":    full_description,
+                "ingredients":    ingredients,
+                "youtube_url":    f"https://www.youtube.com/watch?v={vid}",
+                "published_date": full.get("published_at") or it["snippet"].get("publishedAt"),
+            })
+
+        logger.info(f"Fetched {len(final)} videos between {date_from} and {date_to}")
+        return final
     
     def get_video_details(self, video_ids: List[str]) -> List[Dict]:
         """

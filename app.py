@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import requests
 from tools.detect_items import detect_items
 # from tools.tools import fetch_youtube_link, find_recipe_by_ingredients, fetch_recipe_data, store_all_recipe_data_in_pinecone,find_recipe_using_query, get_festival_recipes
-from tools.tools import fetch_youtube_link, find_recipe_by_ingredients, fetch_recipe_data, store_all_recipe_data_in_pinecone, find_recipe_using_query, get_festival_recipes, fetch_recipes_by_filter, fetch_recipe_by_filter_for_values, fetch_recipes_from_db_by_filters, fetch_recipes_flat_from_db, fetch_recipes_by_ingredients_match, classify_and_extract_recipe_query
+from tools.tools import fetch_youtube_link, find_recipe_by_ingredients, fetch_recipe_data, store_all_recipe_data_in_pinecone, find_recipe_using_query, get_festival_recipes, fetch_recipes_by_filter, fetch_recipe_by_filter_for_values, fetch_recipes_from_db_by_filters, fetch_recipes_flat_from_db, fetch_recipes_by_ingredients_match, classify_and_extract_recipe_query, classify_recipe_with_openai, insert_youtube_recipe_into_db
 from flask_cors import CORS  # Import CORS
 from utils import get_festivals  # Import the new festival function
 from tools.youtube_service import YouTubeService
@@ -1521,6 +1521,272 @@ def smart_ai_recipe_by_query():
         "start_index": start_index,
         "count":       returned_count,
         "recipes":     recipes,
+    }), 200
+    
+# @app.route('/youtube_data_load', methods=['POST'])
+# def youtube_data_load():
+#     """
+#     Fetch IFN YouTube videos published on (or within) a given date range,
+#     classify them with OpenAI (recipe_type, category, nutrition), and write
+#     the enriched data to a JSON file.
+
+#     Request body (JSON):
+#         date        - "YYYY-MM-DD" — fetch videos published ON this exact day [Optional]
+#         date_from   - "YYYY-MM-DD" — lower bound (inclusive)                  [Optional]
+#         date_to     - "YYYY-MM-DD" — upper bound (inclusive)                  [Optional]
+
+#     At least one of the above is required.
+#     Uses YouTube's publishedAfter/publishedBefore so only matching videos are fetched.
+#     """
+#     from datetime import datetime
+
+#     try:
+#         data = request.get_json(force=True, silent=True) or {}
+#     except Exception:
+#         return jsonify({"error": "Invalid JSON body"}), 400
+
+#     single_date = (data.get('date') or '').strip()
+#     date_from   = (data.get('date_from') or '').strip()
+#     date_to     = (data.get('date_to') or '').strip()
+
+#     if not (single_date or date_from or date_to):
+#         return jsonify({"error": "Provide 'date' or 'date_from'/'date_to' (YYYY-MM-DD)"}), 400
+
+#     def _parse_date(s, field):
+#         try:
+#             return datetime.strptime(s, "%Y-%m-%d").date()
+#         except ValueError:
+#             raise ValueError(f"{field} must be in YYYY-MM-DD format")
+
+#     try:
+#         if single_date:
+#             d_from = _parse_date(single_date, 'date')
+#             d_to   = d_from
+#         else:
+#             # If only one bound is given, use it for both (single-day behaviour)
+#             if date_from and not date_to:
+#                 d_to = _parse_date(date_from, 'date_from')
+#                 d_from = d_to
+#             elif date_to and not date_from:
+#                 d_from = _parse_date(date_to, 'date_to')
+#                 d_to = d_from
+#             else:
+#                 d_from = _parse_date(date_from, 'date_from')
+#                 d_to   = _parse_date(date_to,   'date_to')
+#             if d_from > d_to:
+#                 return jsonify({"error": "date_from must be <= date_to"}), 400
+#     except ValueError as ve:
+#         return jsonify({"error": str(ve)}), 400
+
+#     # Step 1: fetch ONLY videos in the date range (server-side filter)
+#     try:
+#         youtube_service = YouTubeService()
+#         matched = youtube_service.fetch_videos_by_date_range(str(d_from), str(d_to))
+#     except Exception as e:
+#         return jsonify({"error": f"Failed to fetch YouTube videos: {str(e)}"}), 500
+
+#     print(f"[youtube_data_load] {len(matched)} videos between {d_from} and {d_to}")
+
+#     if not matched:
+#         return jsonify({
+#             "message":   "No videos found in the given date range",
+#             "date_from": str(d_from),
+#             "date_to":   str(d_to),
+#             "matched":   0,
+#             "recipes":   [],
+#         }), 200
+
+#     # Step 2: classify each video with OpenAI
+#     enriched_recipes = []
+#     failed = 0
+
+#     for idx, v in enumerate(matched, start=1):
+#         print(f"[classify {idx}/{len(matched)}] {v.get('title')}")
+
+#         raw_ings = v.get("ingredients") or []
+#         normalized_ings = [
+#             {"heading": ing, "quantity": ""} if isinstance(ing, str) else ing
+#             for ing in raw_ings
+#         ]
+
+#         recipe_for_ai = {
+#             "title":       v.get("title"),
+#             "description": v.get("description"),
+#             "ingredients": normalized_ings,
+#         }
+
+#         classified = classify_recipe_with_openai(recipe_for_ai)
+#         if classified is None:
+#             failed += 1
+#             continue
+
+#         enriched_recipes.append({
+#             "title":        v.get("title"),
+#             "description":  v.get("description"),
+#             "url":          v.get("youtube_url"),
+#             "ingredients":  normalized_ings,
+#             "published_at": v.get("published_date"),
+#             **classified,
+#         })
+
+#     # Step 3: write JSON file
+#     filename = f"yt_classified_{d_from}_{d_to}.json"
+#     filepath = os.path.join(os.getcwd(), filename)
+#     try:
+#         with open(filepath, "w", encoding="utf-8") as f:
+#             json.dump(enriched_recipes, f, indent=2, ensure_ascii=False)
+#     except Exception as e:
+#         return jsonify({"error": f"Failed to write JSON file: {str(e)}"}), 500
+
+#     return jsonify({
+#         "date_from":  str(d_from),
+#         "date_to":    str(d_to),
+#         "matched":    len(matched),
+#         "enriched":   len(enriched_recipes),
+#         "failed":     failed,
+#         "file_saved": filepath,
+#         "recipes":    enriched_recipes,
+#     }), 200
+
+@app.route('/youtube_data_load', methods=['POST'])
+def youtube_data_load():
+    """
+    Fetch IFN YouTube videos published on (or within) a given date range,
+    classify them with OpenAI (recipe_type, category, nutrition), push them
+    into Postgres (recipes + recipe_ingredients + recipe_steps), and also
+    write a JSON backup file.
+
+    Request body (JSON):
+        date        - "YYYY-MM-DD" — fetch videos published ON this exact day [Optional]
+        date_from   - "YYYY-MM-DD" — lower bound (inclusive)                  [Optional]
+        date_to     - "YYYY-MM-DD" — upper bound (inclusive)                  [Optional]
+
+    At least one of the above is required.
+    Uses YouTube's publishedAfter/publishedBefore so only matching videos are fetched.
+    Deduplicates on ifn_recipe_id (= YouTube video ID): re-running for the same
+    date safely UPDATEs rows instead of creating duplicates.
+    """
+    from datetime import datetime
+
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        return jsonify({"error": "Invalid JSON body"}), 400
+
+    single_date = (data.get('date') or '').strip()
+    date_from   = (data.get('date_from') or '').strip()
+    date_to     = (data.get('date_to') or '').strip()
+
+    if not (single_date or date_from or date_to):
+        return jsonify({"error": "Provide 'date' or 'date_from'/'date_to' (YYYY-MM-DD)"}), 400
+
+    def _parse_date(s, field):
+        try:
+            return datetime.strptime(s, "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError(f"{field} must be in YYYY-MM-DD format")
+
+    try:
+        if single_date:
+            d_from = _parse_date(single_date, 'date')
+            d_to   = d_from
+        else:
+            if date_from and not date_to:
+                d_to = _parse_date(date_from, 'date_from')
+                d_from = d_to
+            elif date_to and not date_from:
+                d_from = _parse_date(date_to, 'date_to')
+                d_to = d_from
+            else:
+                d_from = _parse_date(date_from, 'date_from')
+                d_to   = _parse_date(date_to,   'date_to')
+            if d_from > d_to:
+                return jsonify({"error": "date_from must be <= date_to"}), 400
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+
+    # Step 1: fetch ONLY videos in the date range (server-side YouTube filter)
+    try:
+        youtube_service = YouTubeService()
+        matched = youtube_service.fetch_videos_by_date_range(str(d_from), str(d_to))
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch YouTube videos: {str(e)}"}), 500
+
+    print(f"[youtube_data_load] {len(matched)} videos between {d_from} and {d_to}")
+
+    if not matched:
+        return jsonify({
+            "message":   "No videos found in the given date range",
+            "date_from": str(d_from),
+            "date_to":   str(d_to),
+            "matched":   0,
+            "recipes":   [],
+        }), 200
+
+    # Step 2: classify + insert each video
+    enriched_recipes = []
+    failed_classify  = 0
+    inserted_ids     = []
+    failed_insert    = 0
+
+    for idx, v in enumerate(matched, start=1):
+        print(f"[process {idx}/{len(matched)}] {v.get('title')}")
+
+        raw_ings = v.get("ingredients") or []
+        normalized_ings = [
+            {"heading": ing, "quantity": ""} if isinstance(ing, str) else ing
+            for ing in raw_ings
+        ]
+
+        recipe_for_ai = {
+            "title":       v.get("title"),
+            "description": v.get("description"),
+            "ingredients": normalized_ings,
+        }
+
+        classified = classify_recipe_with_openai(recipe_for_ai)
+        if classified is None:
+            failed_classify += 1
+            continue
+
+        enriched = {
+            "title":        v.get("title"),
+            "description":  v.get("description"),
+            "url":          v.get("youtube_url"),
+            "ingredients":  normalized_ings,
+            "published_at": v.get("published_date"),
+            **classified,
+        }
+
+        # Push into Postgres
+        new_id = insert_youtube_recipe_into_db(enriched)
+        if new_id:
+            enriched["id"] = new_id
+            inserted_ids.append(new_id)
+        else:
+            failed_insert += 1
+
+        enriched_recipes.append(enriched)
+
+    # Step 3: write JSON backup (includes DB id for each inserted recipe)
+    # filename = f"yt_classified_{d_from}_{d_to}.json"
+    # filepath = os.path.join(os.getcwd(), filename)
+    # try:
+    #     with open(filepath, "w", encoding="utf-8") as f:
+    #         json.dump(enriched_recipes, f, indent=2, ensure_ascii=False)
+    # except Exception as e:
+    #     return jsonify({"error": f"Failed to write JSON file: {str(e)}"}), 500
+
+    return jsonify({
+        "date_from":       str(d_from),
+        "date_to":         str(d_to),
+        "matched":         len(matched),
+        "enriched":        len(enriched_recipes),
+        "classify_failed": failed_classify,
+        "inserted":        len(inserted_ids),
+        "insert_failed":   failed_insert,
+        "inserted_ids":    inserted_ids,
+        "recipes":         enriched_recipes,
     }), 200
     
 if __name__ == '__main__':

@@ -1748,3 +1748,333 @@ Output: {
             "intent": "flat_filter",
             "params": {"meal_type": "", "count": 10},
         }
+        
+# ---------- YouTube recipe classification helpers ----------
+
+ALLOWED_RECIPE_TYPES = {"Breakfast", "Lunch", "Dinner", "Snack", "Drink", "Dessert"}
+ALLOWED_RECIPE_CATEGORIES = {"Veg", "Non Veg"}
+NUTRITION_KEYS = ("calories_kcal", "protein_g", "carbs_g", "fat_g")
+
+_CLASSIFY_SYSTEM_PROMPT = """You are a nutrition and recipe classification assistant.
+
+For each recipe you will:
+1. Classify it into exactly ONE recipe_type of: Breakfast, Lunch, Dinner, Snack, Drink, Dessert.
+   - Drinks/smoothies/beverages/juices/lassi/tea/coffee -> Drink
+   - Sweets/halwa/cakes/ice cream/kheer/pudding/cookies -> Dessert
+   - Chaats/pakoras/finger food/small bites/dips/spreads -> Snack
+   - Paratha/poha/upma/idli/dosa/eggs/toast/pancakes/omelette -> Breakfast
+   - Curries/rice/heavy meals/biryani/pasta/full meals -> Lunch or Dinner
+2. Classify recipe_category as exactly ONE of: "Veg" or "Non Veg".
+   - Non Veg if it contains meat, chicken, mutton, beef, pork, fish, prawns, shrimp, crab, lamb, bacon, ham, or egg
+   - Veg otherwise (dairy, paneer, cheese, yogurt, honey are Veg)
+3. Estimate nutrition PER SERVING as integers:
+   - calories_kcal, protein_g, carbs_g, fat_g
+
+Respond with STRICT JSON only, using EXACTLY these six keys and no others:
+recipe_type, recipe_category, calories_kcal, protein_g, carbs_g, fat_g
+
+Example output:
+{
+  "recipe_type": "Snack",
+  "recipe_category": "Veg",
+  "calories_kcal": 180,
+  "protein_g": 5,
+  "carbs_g": 15,
+  "fat_g": 11
+}"""
+
+def _normalize_recipe_type(raw):
+    rtype = (raw or "").strip().title()
+    if rtype in ALLOWED_RECIPE_TYPES:
+        return rtype
+    low = rtype.lower()
+    if "breakfast" in low: return "Breakfast"
+    if "lunch" in low:     return "Lunch"
+    if "dinner" in low:    return "Dinner"
+    if "snack" in low or "appetizer" in low: return "Snack"
+    if "drink" in low or "beverage" in low:  return "Drink"
+    if "dessert" in low or "sweet" in low:   return "Dessert"
+    return None
+
+
+def _normalize_recipe_category(raw):
+    cat = (raw or "").strip().lower().replace("-", " ").replace("_", " ")
+    if cat in ("non veg", "nonveg", "non vegetarian", "non-vegetarian"):
+        return "Non Veg"
+    if cat in ("veg", "vegetarian", "vegan"):
+        return "Veg"
+    return None
+
+
+def _to_int(v):
+    try:
+        return int(round(float(v)))
+    except (TypeError, ValueError):
+        return None
+
+
+def classify_recipe_with_openai(recipe: dict) -> dict:
+    """
+    Enrich a single recipe dict with recipe_type, recipe_category, and
+    per-serving nutrition using OpenAI. Returns the enriched fields or None.
+    Reads OPENAI_API_KEY from the .env file.
+    """
+    import json
+    from openai import OpenAI
+    from dotenv import load_dotenv
+
+    # Make sure .env is loaded (safe to call multiple times)
+    load_dotenv()
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        print("[CLASSIFY ERROR] OPENAI_API_KEY not found in environment / .env")
+        return None
+
+    sync_client = OpenAI(api_key=api_key)
+
+    name = recipe.get("title") or "Unknown"
+    desc = (recipe.get("description") or "")[:800]
+
+    ing_lines = []
+    for ing in (recipe.get("ingredients") or []):
+        if isinstance(ing, dict):
+            h = (ing.get("heading") or "").strip()
+            q = (ing.get("quantity") or "").strip()
+            if h:
+                ing_lines.append(f"- {q + ' ' if q else ''}{h}")
+        elif isinstance(ing, str):
+            ing_lines.append(f"- {ing}")
+
+    user_prompt = (
+        f"Recipe name: {name}\n"
+        f"Description: {desc}\n\n"
+        f"Ingredients:\n{chr(10).join(ing_lines) if ing_lines else '(none listed)'}\n\n"
+        f"Return JSON with recipe_type, recipe_category, and nutrition per serving."
+    )
+
+    for attempt in range(3):
+        try:
+            resp = sync_client.chat.completions.create(
+                model="gpt-4o-mini",
+                temperature=0,
+                max_tokens=200,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": _CLASSIFY_SYSTEM_PROMPT},
+                    {"role": "user",   "content": user_prompt},
+                ],
+            )
+            raw_text = resp.choices[0].message.content or "{}"
+            print(f"[CLASSIFY attempt {attempt+1}] raw response: {raw_text}")
+
+            data = json.loads(raw_text)
+            rtype = _normalize_recipe_type(data.get("recipe_type"))
+            rcat  = _normalize_recipe_category(data.get("recipe_category"))
+            nutrition = {k: _to_int(data.get(k)) for k in NUTRITION_KEYS}
+
+            # Diagnostic: show which piece (if any) failed
+            print(f"[CLASSIFY attempt {attempt+1}] "
+                  f"rtype={rtype!r}, rcat={rcat!r}, nutrition={nutrition}")
+
+            if rtype and rcat and all(v is not None for v in nutrition.values()):
+                return {"recipe_type": rtype, "recipe_category": rcat, **nutrition}
+            else:
+                print(f"[CLASSIFY attempt {attempt+1}] validation failed — retrying")
+        except Exception as e:
+            print(f"[CLASSIFY ERROR attempt {attempt+1}] {e}")
+
+    print(f"[CLASSIFY] gave up after 3 attempts for: {recipe.get('title')}")
+    return None
+
+import re
+
+def _slugify(text: str) -> str:
+    """Make a URL-safe slug from a title."""
+    s = (text or "").lower()
+    s = re.sub(r"[^\w\s-]", "", s)         # drop punctuation
+    s = re.sub(r"[-\s]+", "-", s).strip("-")
+    return s or "untitled"
+
+
+def parse_steps_from_description(description: str) -> list:
+    """
+    Best-effort extraction of cooking steps from a YouTube description.
+    Looks for a 'Method:' / 'Instructions:' / 'Steps:' header and collects
+    lines until another section header appears.
+
+    Returns a list of step strings.
+    """
+    if not description:
+        return []
+
+    lines = description.split("\n")
+    steps = []
+    in_steps = False
+    step_headers = ("method", "instructions", "steps", "recipe", "directions", "preparation")
+
+    for line in lines:
+        stripped = line.strip()
+        low = stripped.lower().rstrip(":")
+
+        if not in_steps:
+            if any(low.startswith(h) for h in step_headers):
+                in_steps = True
+            continue
+
+        if not stripped:
+            continue
+        # Stop at next section header
+        if stripped.endswith(":") and len(stripped.split()) <= 3:
+            break
+        # Ignore hashtag-only lines and very short noise
+        if stripped.startswith("#") and " " not in stripped:
+            break
+
+        # Strip leading "1.", "Step 1:", "-", "•"
+        cleaned = re.sub(r"^\s*(step\s*\d+[:.)]?|\d+[.)]|[-•*])\s*", "",
+                         stripped, flags=re.IGNORECASE).strip()
+        if cleaned:
+            steps.append(cleaned)
+
+    return steps
+
+
+def insert_youtube_recipe_into_db(recipe: dict) -> str:
+    """
+    Insert one enriched YouTube recipe into recipes + recipe_ingredients +
+    recipe_steps. Deduplicates on ifn_recipe_id (= YouTube video ID).
+
+    Returns:
+        str: the recipe UUID on success, or None on failure.
+    """
+    import psycopg2
+    from psycopg2.extras import Json
+
+    DB_URL = os.getenv("DB_URL")
+
+    title       = (recipe.get("title") or "").strip()
+    description = recipe.get("description") or ""
+    url         = recipe.get("url") or recipe.get("youtube_url") or ""
+    published   = recipe.get("published_at") or recipe.get("published_date")
+
+    if not title:
+        print("[DB INSERT] skipping — empty title")
+        return None
+
+    # Pull YouTube video ID out of the URL for dedupe (ifn_recipe_id is UNIQUE)
+    m = re.search(r"(?:v=|youtu\.be/)([\w-]{6,})", url)
+    video_id = m.group(1) if m else None
+
+    # diet: map classifier's "Veg" / "Non Veg" -> DB values "veg" / "non-veg"
+    rcat = (recipe.get("recipe_category") or "").strip().lower()
+    diet_value = "non-veg" if rcat in ("non veg", "non-veg", "nonveg") else (
+                 "veg"     if rcat == "veg" else None)
+
+    # meal_type: classifier outputs "Breakfast" etc. — keep your DB style (lowercase)
+    rtype = (recipe.get("recipe_type") or "").strip().lower() or None
+    # map "drink" -> "snack" if you don't have that bucket; otherwise keep as-is
+    # (adjust to match what your other endpoints expect)
+
+    slug_base = _slugify(title)
+    slug = f"{slug_base}-{video_id}" if video_id else slug_base
+
+    ingredients = recipe.get("ingredients") or []
+    steps = parse_steps_from_description(description)
+
+    conn = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        conn.autocommit = False
+        cur = conn.cursor()
+
+        # --- 1. Insert/get the parent recipes row ---
+        cur.execute(
+            """
+            INSERT INTO recipes (
+                ifn_recipe_id, slug, title, description,
+                diet, meal_type,
+                calories_kcal, protein_g, carbs_g, fat_g,
+                ifn_url, source, published_at, is_published
+            ) VALUES (
+                %s, %s, %s, %s,
+                %s, %s,
+                %s, %s, %s, %s,
+                %s, %s, %s, %s
+            )
+            ON CONFLICT (ifn_recipe_id) DO UPDATE SET
+                title         = EXCLUDED.title,
+                description   = EXCLUDED.description,
+                diet          = EXCLUDED.diet,
+                meal_type     = EXCLUDED.meal_type,
+                calories_kcal = EXCLUDED.calories_kcal,
+                protein_g     = EXCLUDED.protein_g,
+                carbs_g       = EXCLUDED.carbs_g,
+                fat_g         = EXCLUDED.fat_g,
+                ifn_url       = EXCLUDED.ifn_url,
+                published_at  = EXCLUDED.published_at,
+                updated_at    = NOW()
+            RETURNING id;
+            """,
+            (
+                video_id, slug, title, description,
+                diet_value, rtype,
+                recipe.get("calories_kcal"),
+                recipe.get("protein_g"),
+                recipe.get("carbs_g"),
+                recipe.get("fat_g"),
+                url, "youtube", published, True,
+            ),
+        )
+        recipe_id = cur.fetchone()[0]
+
+        # --- 2. Wipe + re-insert ingredients (simplest way to stay in sync) ---
+        cur.execute("DELETE FROM recipe_ingredients WHERE recipe_id = %s;", (recipe_id,))
+
+        for idx, ing in enumerate(ingredients):
+            if isinstance(ing, dict):
+                name = (ing.get("heading") or "").strip()
+                qty  = (ing.get("quantity") or "").strip() or None
+            elif isinstance(ing, str):
+                name, qty = ing.strip(), None
+            else:
+                continue
+            if not name:
+                continue
+
+            cur.execute(
+                """
+                INSERT INTO recipe_ingredients (
+                    recipe_id, ingredient_name, normalized_name,
+                    quantity, sort_order
+                ) VALUES (%s, %s, %s, %s, %s);
+                """,
+                (recipe_id, name, name.lower(), qty, idx),
+            )
+
+        # --- 3. Wipe + re-insert steps ---
+        cur.execute("DELETE FROM recipe_steps WHERE recipe_id = %s;", (recipe_id,))
+
+        for i, step_text in enumerate(steps, start=1):
+            cur.execute(
+                """
+                INSERT INTO recipe_steps (recipe_id, step_number, instruction)
+                VALUES (%s, %s, %s);
+                """,
+                (recipe_id, i, step_text),
+            )
+
+        conn.commit()
+        cur.close()
+        print(f"[DB INSERT] OK  '{title}'  id={recipe_id}  "
+              f"ings={len(ingredients)} steps={len(steps)}")
+        return str(recipe_id)
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"[DB INSERT ERROR] '{title}': {e}")
+        return None
+    finally:
+        if conn:
+            conn.close()
